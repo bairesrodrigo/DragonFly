@@ -1690,52 +1690,35 @@ if __name__ == "__main__":
         rclocal = "/etc/rc.local"
         gadget_script = "/usr/local/bin/usb_gadget.sh"
 
-        # 1. Desvincular y eliminar cualquier gadget USB activo para liberar el controlador
+        # 1. Liberar el gadget de manera segura (ignoramos errores si no existe)
         self.escribir_consola("[*] Liberando controlador USB...")
-        subprocess.run("sudo sh -c 'if [ -d /sys/kernel/config/usb_gadget/g1 ]; then echo \"\" > /sys/kernel/config/usb_gadget/g1/UDC 2>/dev/null; rm -rf /sys/kernel/config/usb_gadget/g1; fi'",
-                    shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run("sudo sh -c 'echo \"\" > /sys/kernel/config/usb_gadget/g1/UDC 2>/dev/null'", shell=True)
 
-        # 2. Modificar /boot/config.txt
+        # 2. Preparar los comandos según el modo
         if modo == "host":
             nuevo_overlay = "dtoverlay=dwc2,dr_mode=host"
+            # Reemplaza cualquier línea que contenga el script por su versión comentada
+            cmd_rc = f"sudo sed -i 's|^.*{gadget_script.replace('/', '\\/')}.*$|# {gadget_script.replace('/', '\\/')} \&|' {rclocal}"
         else:
             nuevo_overlay = "dtoverlay=dwc2,dr_mode=peripheral"
+            # Reemplaza cualquier línea que contenga el script por su versión DEScomentada
+            cmd_rc = f"sudo sed -i 's|^.*{gadget_script.replace('/', '\\/')}.*$|{gadget_script.replace('/', '\\/')} \&|' {rclocal}"
 
-        # Verificar si ya existe una línea con dtoverlay=dwc2
-        check = subprocess.run(f"grep -c '^dtoverlay=dwc2' {cfg}", shell=True, capture_output=True, text=True)
-        if check.stdout.strip() == "0":
-            # No existe, agregar al final
-            cmd_cfg = f"sudo sh -c 'echo \"{nuevo_overlay}\" >> {cfg}'"
-        else:
-            # Existe, reemplazar
-            cmd_cfg = f"sudo sed -i 's/^dtoverlay=dwc2.*/{nuevo_overlay}/' {cfg}"
-
+        # 3. Modificar /boot/config.txt
+        # Elimina cualquier configuración dwc2 previa para evitar conflictos
+        subprocess.run(f"sudo sed -i '/^dtoverlay=dwc2/d' {cfg}", shell=True)
+        # Añade la nueva configuración al final del archivo
+        subprocess.run(f"sudo sh -c 'echo \"{nuevo_overlay}\" >> {cfg}'", shell=True)
         self.escribir_consola(f"[*] Aplicando overlay: {nuevo_overlay}")
-        subprocess.run(cmd_cfg, shell=True)
 
-        # 3. Modificar /etc/rc.local (línea del gadget)
-        if modo == "host":
-            # Comentar la línea si no lo está ya (línea que comience con whitespace opcional y el script)
-            cmd_rc = f"sudo sed -i '/^[[:space:]]*{gadget_script.replace('/', '\\/')}/ s/^\\([[:space:]]*\\)\\(.*\\)/#\\1\\2/' {rclocal}"
-        else:
-            # Descomentar: eliminar el # respetando whitespace
-            cmd_rc = f"sudo sed -i 's/^\\([[:space:]]*\\)#\\([[:space:]]*{gadget_script.replace('/', '\\/')}\\)/\\1\\2/' {rclocal}"
-            # Para cubrir también el patrón con '&' al final:
-            cmd_rc2 = f"sudo sed -i 's/^\\([[:space:]]*\\)#\\([[:space:]]*{gadget_script.replace('/', '\\/')} &\\)/\\1\\2/' {rclocal}"
-            # Ejecutar ambos por si acaso
-            subprocess.run(cmd_rc2, shell=True)
-
-        self.escribir_consola("[*] Ajustando /etc/rc.local...")
+        # 4. Modificar /etc/rc.local
         subprocess.run(cmd_rc, shell=True)
+        self.escribir_consola("[*] Ajustando /etc/rc.local...")
 
-        # 4. Forzar recarga de udev y módulos (opcional, antes del reinicio)
-        subprocess.run("sudo modprobe -r g_serial g_hid 2>/dev/null; sudo modprobe -r dwc2 2>/dev/null; sudo modprobe dwc2",
-                    shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        self.escribir_consola("[+] Perfil USB aplicado con éxito.")
+        self.escribir_consola("[+] Perfil aplicado con éxito.")
         self.escribir_consola("[!] Reiniciando sistema en 3 segundos...")
 
-        # Reiniciar para que el kernel cargue el modo correctamente
+        # 5. Reiniciar (Dejar que el Kernel haga el trabajo duro de cargar/descargar módulos en el boot)
         self.after(3000, lambda: subprocess.run("sudo reboot", shell=True))
 
     # ==========================================
@@ -1751,7 +1734,7 @@ if __name__ == "__main__":
         scroll_utils.pack(fill='both', expand=True, padx=2, pady=2)
 
         opciones = [
-            ("Activar Perfil: USB", lambda: self._cambiar_modo_usb("host")),
+            ("Activar Perfil: ANTENA WIFI", lambda: self._cambiar_modo_usb("host")),
             ("Activar Perfil: RUBBER DUCKY", lambda: self._cambiar_modo_usb("gadget")),
             ("Conectar a Red WiFi", self._utils_wifi_seleccionar_interfaz),
             ("Estado de Red WiFi", self._utils_wifi_estado),
