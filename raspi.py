@@ -108,7 +108,7 @@ class ScrollableFrame(tk.Frame):
         self.canvas = tk.Canvas(self, bg=self.bg_color, highlightthickness=0, borderwidth=0)
         self.scrollbar = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview,
                                        bg="#333333", troughcolor="#1a1a1a",
-                                       activebackground=COLOR_BOTON_ROJO, width=20)
+                                       activebackground=COLOR_BOTON_ROJO, width=24)
         self.scrollable_frame = tk.Frame(self.canvas, bg=self.bg_color,
                                           highlightthickness=0, borderwidth=0)
 
