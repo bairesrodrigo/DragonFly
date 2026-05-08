@@ -105,8 +105,10 @@ class ScrollableFrame(tk.Frame):
         self.configure(bg=self.bg_color, highlightthickness=0, borderwidth=0)
 
         # Canvas con scrollbar
-        # Canvas sin scrollbar
         self.canvas = tk.Canvas(self, bg=self.bg_color, highlightthickness=0, borderwidth=0)
+        self.scrollbar = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview,
+                                       bg="#333333", troughcolor="#1a1a1a",
+                                       activebackground=COLOR_BOTON_ROJO, width=28)
         self.scrollable_frame = tk.Frame(self.canvas, bg=self.bg_color,
                                           highlightthickness=0, borderwidth=0)
 
@@ -116,7 +118,9 @@ class ScrollableFrame(tk.Frame):
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame,
                                                        anchor="nw", tags="scrollable_frame")
 
-        # Solo empaquetamos el canvas para que ocupe todo el ancho
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.scrollbar.pack(side="right", fill="y")
         self.canvas.pack(side="left", fill="both", expand=True)
 
         # Eventos táctiles y ratón
@@ -142,14 +146,18 @@ class ScrollableFrame(tk.Frame):
         self.canvas.itemconfig(self.canvas_window, width=event.width)
 
     def _on_touch_start(self, event):
-        """Inicia arrastre táctil registrando el punto exacto."""
-        self.canvas.scan_mark(event.x, event.y)
+        """Inicia arrastre táctil."""
+        self._drag_start_y = event.y
+        self._scroll_start_y = self.canvas.yview()[0] * self.canvas.bbox("all")[3] if self.canvas.bbox("all") else 0
 
     def _on_touch_drag(self, event):
-        """Arrastrar para desplazar contenido de forma fluida (1:1 con el lápiz)."""
-        # El gain=1 hace que el movimiento sea exactamente igual al del lápiz. 
-        # Si quieres que se mueva más rápido, puedes subirlo a gain=2
-        self.canvas.scan_dragto(event.x, event.y, gain=1)
+        """Arrastrar para desplazar contenido (scroll natural)."""
+        dy = self._drag_start_y - event.y
+        if abs(dy) > 3:
+            total_height = self.canvas.bbox("all")[3] if self.canvas.bbox("all") else 1
+            fraction = dy / total_height
+            self.canvas.yview_scroll(int(fraction * 10), "units")
+            self._drag_start_y = event.y
 
     def _on_touch_end(self, event):
         pass
@@ -188,7 +196,6 @@ class ScrollableFrame(tk.Frame):
             warning_label.pack(fill='x', padx=5, pady=2)
             return
         widget.pack(**pack_options)
-
 
 
 class TecladoNumerico(tk.Toplevel):
@@ -251,7 +258,6 @@ class TecladoNumerico(tk.Toplevel):
             self.display_var.set(actual[:-1])
         else:
             self.display_var.set(actual + tecla)
-
 
 class RedTeamApp(tk.Tk):
     def __init__(self):
@@ -588,6 +594,7 @@ class RedTeamApp(tk.Tk):
         entry_target = ttk.Entry(config_frame, textvariable=self.target_ip, width=16, style='Dark.TEntry')
         entry_target.grid(row=0, column=1, padx=1, pady=1)
         entry_target.bind("<Button-1>", lambda e: TecladoNumerico(self, self.target_ip))
+
 
         ttk.Button(config_frame, text="Set", style='Red.TButton', width=6,
                    command=lambda: self.escribir_consola(f"[+] Target: {self.obtener_target() or 'Inválido'}")).grid(row=0, column=2, padx=1, pady=1)
