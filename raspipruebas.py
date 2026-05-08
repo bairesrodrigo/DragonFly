@@ -1681,8 +1681,38 @@ if __name__ == "__main__":
                 self.escribir_consola("[+] Hecho.")
             except Exception as e:
                 self.escribir_consola(f"[!] Error: {e}")
-
         threading.Thread(target=run, daemon=True).start()
+
+    def _cambiar_modo_usb(self, modo):
+        self.escribir_consola(f"[*] Preparando perfil USB: {modo.upper()}...")
+        
+        # Rutas de los archivos clave
+        cfg = "/boot/config.txt"
+        rclocal = "/etc/rc.local"
+        
+        if modo == "host":
+            # Perfil Antena Alfa (Maestro)
+            # 1. Fuerza el modo host en config.txt
+            cmd_cfg = f"sudo sed -i 's/dtoverlay=dwc2.*/dtoverlay=dwc2,dr_mode=host/g' {cfg}"
+            # 2. Comenta el script del gadget en rc.local para que no se ejecute
+            cmd_rc = f"sudo sed -i 's|^/usr/local/bin/usb_gadget.sh|#/usr/local/bin/usb_gadget.sh|g' {rclocal}"
+            
+        elif modo == "gadget":
+            # Perfil Rubber Ducky (Esclavo)
+            # 1. Fuerza el modo periférico en config.txt
+            cmd_cfg = f"sudo sed -i 's/dtoverlay=dwc2.*/dtoverlay=dwc2,dr_mode=peripheral/g' {cfg}"
+            # 2. Descomenta el script del gadget en rc.local
+            cmd_rc = f"sudo sed -i 's|^#*/usr/local/bin/usb_gadget.sh|/usr/local/bin/usb_gadget.sh|g' {rclocal}"
+            
+        # Ejecutar los cambios
+        subprocess.run(cmd_cfg, shell=True)
+        subprocess.run(cmd_rc, shell=True)
+        
+        self.escribir_consola("[+] Perfil aplicado con éxito.")
+        self.escribir_consola("[!] Reiniciando sistema en 3 segundos...")
+        
+        # Reiniciar para que el kernel cargue el puerto correctamente
+        self.after(3000, lambda: subprocess.run("sudo reboot", shell=True))
 
     # ==========================================
     # MENÚ UTILIDADES 
@@ -1697,6 +1727,8 @@ if __name__ == "__main__":
         scroll_utils.pack(fill='both', expand=True, padx=2, pady=2)
 
         opciones = [
+            ("Activar Perfil: USB", lambda: self._cambiar_modo_usb("host")),
+            ("Activar Perfil: RUBBER DUCKY", lambda: self._cambiar_modo_usb("gadget")),
             ("Conectar a Red WiFi", self._utils_wifi_seleccionar_interfaz),
             ("Estado de Red WiFi", self._utils_wifi_estado),
             ("Conectar Dispositivo BT", self._utils_bluetooth_seleccionar_interfaz),
