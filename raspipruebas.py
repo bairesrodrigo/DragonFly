@@ -1687,49 +1687,34 @@ if __name__ == "__main__":
         self.escribir_consola(f"[*] Preparando perfil USB: {modo.upper()}...")
 
         cfg = "/boot/config.txt"
-        rclocal = "/etc/rc.local"
-        modules_file = "/etc/modules"
         gadget_script = "/usr/local/bin/usb_gadget.sh"
-        
-        # Pre-procesamos la ruta para que sed no colapse con las barras
-        gs_escaped = gadget_script.replace('/', '\\/')
 
-        # 1. Liberar el gadget en caliente si está activo
-        self.escribir_consola("[*] Liberando controlador USB...")
-        subprocess.run("sudo sh -c 'echo \"\" > /sys/kernel/config/usb_gadget/g1/UDC 2>/dev/null'", shell=True)
+        # 1. Limpiamos cualquier rastro de dwc2 del config.txt
+        subprocess.run(f"sudo sed -i '/dwc2/d' {cfg}", shell=True)
 
         if modo == "host":
             # ==========================================
-            # MODO HOST (ANTENA/TECLADO)
+            # MODO HOST (ANTENA WIFI / TECLADO)
             # ==========================================
-            cmd_cfg = f"sudo sed -i 's/^dtoverlay=dwc2/#dtoverlay=dwc2/g' {cfg}"
+            # Sin dtoverlay=dwc2, la placa usa el controlador Host nativo.
+            # Solo nos aseguramos de que el script del Ducky NO se ejecute al inicio.
             
-            # Usamos \\& para solucionar el SyntaxWarning de Python
-            cmd_rc = f"sudo sed -i 's|^.*{gs_escaped}.*$|# {gs_escaped} \\&|' {rclocal}"
-            cmd_mod = f"sudo sed -i 's/^dwc2/#dwc2/g; s/^libcomposite/#libcomposite/g; s/^usb_f_hid/#usb_f_hid/g' {modules_file}"
-            
-            self.escribir_consola("[*] Forzando Host nativo (dwc_otg)...")
+            # Quitamos el permiso de ejecución al script del gadget (apagado por hardware)
+            subprocess.run(f"sudo chmod -x {gadget_script} 2>/dev/null", shell=True)
+            self.escribir_consola("[*] Controlador configurado como Host puro.")
 
         else:
             # ==========================================
             # MODO GADGET (RUBBER DUCKY)
             # ==========================================
-            cmd_cfg = f"sudo sed -i '/dwc2/d' {cfg} && sudo sh -c 'echo \"dtoverlay=dwc2,dr_mode=peripheral\" >> {cfg}'"
+            # Inyectamos dwc2 en modo periférico
+            subprocess.run(f"sudo sh -c 'echo \"dtoverlay=dwc2,dr_mode=peripheral\" >> {cfg}'", shell=True)
             
-            cmd_rc = f"sudo sed -i 's|^.*{gs_escaped}.*$|{gs_escaped} \\&|' {rclocal}"
-            cmd_mod = f"sudo sed -i 's/^#*dwc2/dwc2/g; s/^#*libcomposite/libcomposite/g; s/^#*usb_f_hid/usb_f_hid/g' {modules_file}"
-            
-            self.escribir_consola("[*] Activando módulos de Ducky...")
+            # Le damos permiso de ejecución al script y lo ejecutamos mediante un servicio cron o rc.local limpio
+            subprocess.run(f"sudo chmod +x {gadget_script}", shell=True)
+            self.escribir_consola("[*] Módulos Gadget armados.")
 
-        # 2. Ejecutar las modificaciones
-        subprocess.run(cmd_cfg, shell=True)
-        subprocess.run(cmd_rc, shell=True)
-        subprocess.run(cmd_mod, shell=True)
-
-        self.escribir_consola("[+] Archivos de configuración actualizados.")
-        self.escribir_consola("[!] Reiniciando en 3 segundos...")
-
-        # 3. Reiniciar
+        self.escribir_consola("[+] Aplicado. Reiniciando en 3 segundos...")
         self.after(3000, lambda: subprocess.run("sudo reboot", shell=True))
 
     # ==========================================
