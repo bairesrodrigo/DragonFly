@@ -1,4 +1,5 @@
 import customtkinter as ctk
+import tkinter as tk
 import subprocess
 import threading
 import os
@@ -9,6 +10,7 @@ import tempfile
 from datetime import datetime
 import glob
 import ducky_logic
+from network_modules import poison_logic
 from gadget_handler import BLEGadget
 
 # ==========================================
@@ -39,6 +41,8 @@ class RedTeamApp(ctk.CTk):
         alto = self.winfo_screenheight()
         self.geometry(f"{ancho}x{alto}+0+0") 
         self.deiconify() 
+
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         # ===================================================
         # 2. SOLUCION AGRESIVA AL ENFOQUE (1 Segundo de espera)
@@ -103,7 +107,10 @@ class RedTeamApp(ctk.CTk):
         # Sidebar
         self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=15, fg_color=COLOR_FONDO_SIDEBAR)
         self.sidebar_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(8, weight=1)
+        
+        # CAMBIO AQUÍ: Quitamos el weight de la fila 8 y lo pasamos a la 9 (una fila vacía)
+        self.sidebar_frame.grid_rowconfigure(8, weight=0) 
+        self.sidebar_frame.grid_rowconfigure(9, weight=1) 
 
         self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="DRAGON FLY\nSYSTEM", 
                                      font=ctk.CTkFont(size=22, weight="bold"), text_color="#ff4d4d")
@@ -116,7 +123,8 @@ class RedTeamApp(ctk.CTk):
         self.btn_wifi = self.crear_boton_menu("3. Auditoría WiFi", self.show_wifi_menu, 4)
         self.btn_bluetooth = self.crear_boton_menu("4. Bluetooth BLE", self.show_bluetooth_menu, 5)
         self.btn_ducky = self.crear_boton_menu("5. Rubber Ducky", self.show_ducky_menu, 6)
-        self.btn_utils = self.crear_boton_menu("6. Utilidades OS", self.show_utils_menu, 7)
+        self.btn_poison = self.crear_boton_menu("6. PoisonTap", self.show_poison_menu, 7)
+        self.btn_utils = self.crear_boton_menu("7. Utilidades OS", self.show_utils_menu, 8)
 
         # Frame principal (scrollable)
         self.main_frame = ctk.CTkScrollableFrame(self, corner_radius=15, fg_color=COLOR_FONDO_PRINCIPAL)
@@ -233,7 +241,7 @@ class RedTeamApp(ctk.CTk):
         # Contenedor principal centrado
         container = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         container.pack(expand=True, fill="both", padx=20, pady=20)
-        
+
         # Título de bienvenida
         titulo = ctk.CTkLabel(
             container,
@@ -242,17 +250,8 @@ class RedTeamApp(ctk.CTk):
             text_color="#ff4d4d"
         )
         titulo.pack(pady=(30, 10))
-        
-        # Subtítulo
-        subtitulo = ctk.CTkLabel(
-            container,
-            text="Red Team Toolbox - Auditoría y Pentesting",
-            font=ctk.CTkFont(size=16),
-            text_color="#aaaaaa"
-        )
-        subtitulo.pack(pady=(0, 30))
-        
-        # Arte ASCII en color rojo
+
+                       # Arte ASCII en color rojo
         ascii_art = r"""                                                                                                                          
                                                                               ▒▒                      ░░░░                                                                              
                                                                                 ░░                    ▒▒                                                                                
@@ -305,17 +304,114 @@ class RedTeamApp(ctk.CTk):
         )
         ascii_label.pack(pady=10)
         
-        # Línea decorativa
-        ctk.CTkFrame(container, height=2, fg_color="#ff4d4d").pack(fill="x", padx=50, pady=20)
         
-        # Pie de página
-        footer = ctk.CTkLabel(
+        # Subtítulo
+        subtitulo = ctk.CTkLabel(
             container,
-            text="Selecciona una herramienta del menú lateral para comenzar.",
-            font=ctk.CTkFont(size=14),
-            text_color="#888888"
+            text="Red Team Toolbox - Auditoría y Pentesting",
+            font=ctk.CTkFont(size=16),
+            text_color="#aaaaaa"
         )
-        footer.pack(pady=20)
+        subtitulo.pack(pady=(0, 30))
+
+    def show_poison_menu(self):
+        """Menú para lanzar el ataque PoisonTap con monitor integrado."""
+        self.limpiar_main_frame()
+        
+        # TÍTULO Y DESCRIPCIÓN
+        ctk.CTkLabel(self.main_frame, text="ATAQUE DE RED POISONTAP", 
+                     font=ctk.CTkFont(size=24, weight="bold"), text_color="#ff4d4d").pack(pady=(40, 10))
+
+        ctk.CTkLabel(self.main_frame, text="Este módulo emula un adaptador Ethernet para\nsecuestrar el tráfico y capturar credenciales.",
+                     font=ctk.CTkFont(size=14), text_color="#cccccc").pack(pady=10)
+
+        ctk.CTkFrame(self.main_frame, height=2, fg_color="#ff4d4d").pack(fill="x", padx=50, pady=20)
+
+        # 3. CONTENEDOR DE BOTONES
+        botones_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        botones_frame.pack(pady=10)
+
+        # Botón Lanzar
+        self.btn_ejecutar_ataque = ctk.CTkButton(
+            botones_frame, text="LANZAR ATAQUE", command=self.lanzar_ataque_hilo, 
+            fg_color="#ff4d4d", hover_color="#cc0000", font=ctk.CTkFont(size=16, weight="bold"),
+            height=45, width=200
+        )
+        self.btn_ejecutar_ataque.pack(side="left", padx=10)
+
+        # Botón Detener
+        self.btn_detener_ataque = ctk.CTkButton(
+            botones_frame, text="DETENER ATAQUE", command=self.detener_ataque, 
+            fg_color="#444444", hover_color="#222222", font=ctk.CTkFont(size=16, weight="bold"),
+            height=45, width=200, state="disabled"
+        )
+        self.btn_detener_ataque.pack(side="left", padx=10)
+
+        # 4. CONSOLA DE MONITOREO
+        self.consola = ctk.CTkTextbox(self.main_frame, width=700, height=300, fg_color="#000000", 
+                                      text_color="#00ff00", font=ctk.CTkFont(family="Courier", size=12))
+        self.consola.pack(pady=20, padx=20)
+        self.consola.insert("0.0", "[>] Dragon Fly: Sistema listo en eth1. Esperando ejecución...\n")
+
+    def lanzar_ataque_hilo(self):
+        """Ejecuta la lógica de ataque y cambia los colores de los botones."""
+        # 1. 'Apagamos' el botón de lanzar (Gris oscuro)
+        self.btn_ejecutar_ataque.configure(
+            state="disabled", 
+            text="ATAQUE EN CURSO...",
+            fg_color="#2b2b2b"  # Gris oscuro
+        )
+        
+        # 2. 'Encendemos' el botón de detener (Rojo vibrante)
+        self.btn_detener_ataque.configure(
+            state="normal", 
+            fg_color="#ff0000", # Rojo puro para resaltar
+            text="DETENER ATAQUE"
+        )
+        
+        self.consola.insert("end", "[!] Motor Dragon-Fly activo...\n")
+        self.consola.see("end")
+        
+        threading.Thread(target=self.ejecutar_logica_ataque, daemon=True).start()
+
+    def ejecutar_logica_ataque(self):
+        try:
+            import network_modules.poison_logic as poison_logic
+            poison_logic.iniciar_ataque_red(
+                "eth1", 
+                callback_consola=lambda texto: self.after(
+                    0, lambda: [self.consola.insert("end", texto), self.consola.see("end")]
+                )
+            )
+        except Exception as e:
+            self.after(0, lambda: self.consola.insert("end", f"\n[ERROR CRÍTICO]: {e}\n"))
+        finally:
+            self.after(0, lambda: self.btn_ejecutar_ataque.configure(state="normal", text="LANZAR ATAQUE"))
+
+    def detener_ataque(self):
+        """Mata los procesos de red y libera los botones."""
+        self.consola.insert("end", "\n[!] Deteniendo servicios de red...\n")
+        
+        os.system("sudo pkill -f responder")
+        os.system("sudo fuser -k 80/tcp")
+        os.system("sudo fuser -k 445/tcp")
+        
+        self.consola.insert("end", "[OK] Procesos detenidos y puertos liberados.\n")
+        self.btn_ejecutar_ataque.configure(state="normal", text="LANZAR ATAQUE")
+        self.btn_detener_ataque.configure(state="disabled", fg_color="#444444")
+
+    def on_closing(self):
+        """Limpia todo antes de cerrar la ventana."""
+        print("\n[!] Dragon Fly: Cerrando servicios y liberando puertos...")
+        try:
+            os.system("sudo pkill -f responder")
+            os.system("sudo fuser -k 80/tcp")
+            os.system("sudo fuser -k 445/tcp")
+            os.system("sudo iptables -F")
+        except:
+            pass
+        finally:
+            self.destroy()
 
     # ==========================================
     # MENÚ RECONOCIMIENTO (NMAP) - MODIFICADO
