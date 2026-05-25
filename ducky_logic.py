@@ -31,25 +31,84 @@ HID_KEY_CODES = {
     'f13': 0x68, 'f14': 0x69, 'f15': 0x6a, 'f16': 0x6b, 'f17': 0x6c,
     'f18': 0x6d, 'f19': 0x6e, 'f20': 0x6f, 'f21': 0x70, 'f22': 0x71,
     'f23': 0x72, 'f24': 0x73,
+    '102nd': 0x64,
     # Modificadores
     'leftctrl': 0xe0, 'leftshift': 0xe1, 'leftalt': 0xe2, 'leftgui': 0xe3,
     'rightctrl': 0xe4, 'rightshift': 0xe5, 'rightalt': 0xe6, 'rightgui': 0xe7,
 }
 
-# Añade este diccionario debajo de tus HID_KEY_CODES
-SHIFT_CHARS = {
-    ':': ';',  # En teclado US, ':' es Shift + ';'
-    '?': '/',  # En teclado US, '?' es Shift + '/'
-    '_': '-',
-    '+': '=',
-    '"': "'",
-    '>': '.',
-    '<': ',',
-    '|': '\\',
-    '{': '[',
-    '}': ']',
-    '~': '`'
+# Mapeo completo para US (Inglés)
+SHIFT_CHARS_US = {
+    '~': '`', '!': '1', '@': '2', '#': '3', '$': '4', '%': '5',
+    '^': '6', '&': '7', '*': '8', '(': '9', ')': '0',
+    '_': '-', '+': '=', '{': '[', '}': ']', '|': '\\',
+    ':': ';', '"': "'", '<': ',', '>': '.', '?': '/'
 }
+
+# Mapeo definitivo para Español (España - ISO)
+# Formato: 'caracter': (Mascara_Modificador, 'tecla_fisica_us', Es_DeadKey)
+# Modificadores: 0 = Ninguno, 2 = Shift Izq, 64 = AltGr (Right Alt)
+LAYOUT_ES = {
+    # Minúsculas y números (sin modificador)
+    **{chr(c): (0, chr(c), False) for c in range(97, 123) if chr(c) != 'ñ'},
+    'ñ': (0, ';', False), ' ': (0, 'space', False),
+    '1': (0, '1', False), '2': (0, '2', False), '3': (0, '3', False),
+    '4': (0, '4', False), '5': (0, '5', False), '6': (0, '6', False),
+    '7': (0, '7', False), '8': (0, '8', False), '9': (0, '9', False), '0': (0, '0', False),
+
+    # Símbolos directos
+    "'": (0, '-', False),
+    '¡': (0, '=', False),
+    '`': (0, '[', True),   # Dead key (Acento grave)
+    '+': (0, ']', False),
+    'ç': (0, '\\', False),
+    '´': (0, "'", True),   # Dead key (Tilde)
+    ',': (0, ',', False),
+    '.': (0, '.', False),
+    '-': (0, '/', False),
+    '<': (0, '102nd', False), # Tecla exclusiva ISO
+    'º': (0, '`', False),
+
+    # Símbolos con SHIFT (Máscara 2)
+    '!': (2, '1', False),
+    '"': (2, '2', False),
+    '·': (2, '3', False),
+    '$': (2, '4', False),
+    '%': (2, '5', False),
+    '&': (2, '6', False),
+    '/': (2, '7', False),
+    '(': (2, '8', False),
+    ')': (2, '9', False),
+    '=': (2, '0', False),
+    '?': (2, '-', False),
+    '¿': (2, '=', False),
+    '^': (2, '[', True),   # Dead key (Circunflejo)
+    '*': (2, ']', False),
+    'Ç': (2, '\\', False),
+    'Ñ': (2, ';', False),
+    '¨': (2, "'", True),   # Dead key (Diéresis)
+    ';': (2, ',', False),
+    ':': (2, '.', False),
+    '_': (2, '/', False),
+    '>': (2, '102nd', False),
+    'ª': (2, '`', False),
+
+    # Símbolos con AltGr (Máscara 64)
+    '|': (64, '1', False),
+    '@': (64, '2', False),
+    '#': (64, '3', False),
+    '~': (64, '4', True),  # Dead key (Virgulilla)
+    '€': (64, 'e', False),
+    '[': (64, '[', False),
+    ']': (64, ']', False),
+    '{': (64, "'", False),
+    '}': (64, '\\', False),
+    '\\':(64, '`', False),
+}
+
+# Añadir mayúsculas a ES dinámicamente
+for c in range(65, 91):
+    if chr(c) != 'Ñ': LAYOUT_ES[chr(c)] = (2, chr(c).lower(), False)
 
 # Alias comunes
 ALIAS = {
@@ -124,28 +183,34 @@ def presionar_combinacion(modificador, tecla):
     enviar_reporte_hid(mod_bit, key_code)
 
 
-def escribir_texto(texto):
-    """Escribe una cadena de texto carácter por carácter."""
+def escribir_texto(texto, layout="us"):
+    """Escribe texto asegurando compatibilidad de idiomas, AltGr y Teclas Muertas."""
     for char in texto:
-        if char.isupper():
-            mod_bit = 1 << (HID_KEY_CODES['leftshift'] - 0xE0)
-            key_lower = char.lower()
-            if key_lower in HID_KEY_CODES:
-                enviar_reporte_hid(mod_bit, HID_KEY_CODES[key_lower])
-        
-        # NUEVO BLOQUE: Manejo de caracteres especiales
-        elif char in SHIFT_CHARS:
-            mod_bit = 1 << (HID_KEY_CODES['leftshift'] - 0xE0)
-            base_char = SHIFT_CHARS[char]
-            enviar_reporte_hid(mod_bit, HID_KEY_CODES[base_char])
+        if layout == "es" and char in LAYOUT_ES:
+            mod_mask, key_name, is_dead_key = LAYOUT_ES[char]
+            key_code = HID_KEY_CODES[key_name]
             
+            # Enviar la tecla con el modificador necesario (Shift = 2, AltGr = 64)
+            enviar_reporte_hid(mod_mask, key_code)
+            
+            # Si es una tecla muerta (~, ^, ´, `), forzamos un espacio para imprimirla
+            if is_dead_key:
+                enviar_reporte_hid(0, HID_KEY_CODES['space'])
+                
         else:
-            if char in HID_KEY_CODES:
-                enviar_reporte_hid(0, HID_KEY_CODES[char])
+            # Lógica US (Por Defecto)
+            if char.isupper():
+                enviar_reporte_hid(2, HID_KEY_CODES[char.lower()])
+            elif char in SHIFT_CHARS_US:
+                base_char = SHIFT_CHARS_US[char]
+                enviar_reporte_hid(2, HID_KEY_CODES[base_char])
             else:
-                print(f"[!] Carácter no soportado: {char}")
+                if char in HID_KEY_CODES:
+                    enviar_reporte_hid(0, HID_KEY_CODES[char])
+                else:
+                    print(f"[!] Carácter no soportado: {char}")
 
-def ejecutar_script_ducky(ruta_archivo):
+def ejecutar_script_ducky(ruta_archivo, layout="us"):
     """Lee y ejecuta un script Rubber Ducky escribiendo en /dev/hidg0."""
     if not os.path.exists(HID_DEVICE):
         raise FileNotFoundError(f"Dispositivo HID {HID_DEVICE} no encontrado. Asegúrate de que el gadget USB HID esté configurado.")
@@ -172,7 +237,7 @@ def ejecutar_script_ducky(ruta_archivo):
 
         if comando == "STRING":
             print(f"  [>] Escribiendo: {argumento}")
-            escribir_texto(argumento)
+            escribir_texto(argumento, layout=layout)
         elif comando == "DELAY":
             try:
                 ms = int(argumento)
