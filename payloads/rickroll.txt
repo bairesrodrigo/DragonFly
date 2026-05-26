@@ -1,6 +1,12 @@
-REM El clásico Rickroll corregido
+REM El clásico Rickroll para Linux
 GUI
 DELAY 1000
+STRING terminal
+ENTER
+DELAY 2000
 STRING xdg-open https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ENTER
-REM Esperamos 3 segundos a que Firefox abra la ventana y se enfoque
+DELAY 500
+REM Cerramos la terminal para dejar solo el video en pantalla
+STRING exit
+ENTER
