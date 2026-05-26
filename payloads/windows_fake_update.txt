@@ -1,9 +1,9 @@
-REM Payload: windows_fake_update.txt
 REM Abre la web fakeupdate.net a pantalla completa
 DELAY 1000
 GUI r
 DELAY 500
 STRING microsoft-edge:http://fakeupdate.net/win10ue/
 ENTER
-DELAY 3000
-STRING f11
+REM Damos 5 segundos para que Edge cargue la página antes de dar F11
+DELAY 5000
+F11
