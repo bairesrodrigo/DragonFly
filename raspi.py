@@ -489,6 +489,7 @@ class RedTeamApp(tk.Tk):
 
         # Variables de estado global
         self.target_ip = tk.StringVar(value="127.0.0.1")
+        self.ducky_layout = tk.StringVar(value="us") 
         self.usar_rango = tk.BooleanVar(value=False)
         self.rango_cidr = tk.StringVar(value="/24")
         self.interfaz_seleccionada = tk.StringVar(value="")
@@ -1803,12 +1804,23 @@ if __name__ == "__main__":
         self.limpiar_main_frame()
         self.agregar_boton_atras(self.show_inicio_menu)
         ttk.Label(self.main_frame, text="PAYLOADS DUCKY", style='Title.TLabel').pack(pady=2)
+
+        # --- NUEVO: Menú para seleccionar el teclado (US / ES) ---
+        config_frame = ttk.Frame(self.main_frame, style='Dark.TFrame')
+        config_frame.pack(fill='x', padx=5, pady=2)
+        
+        ttk.Label(config_frame, text="Target Layout:", style='Dark.TLabel').pack(side='left', padx=(5, 2))
+        layout_menu = ttk.OptionMenu(config_frame, self.ducky_layout, self.ducky_layout.get(), "us", "es", style='Dark.TMenubutton')
+        layout_menu.pack(side='left')
+        # --------------------------------------------------------
+
         payloads_dir = "payloads"
         os.makedirs(payloads_dir, exist_ok=True)
         archivos = [f for f in os.listdir(payloads_dir) if f.endswith(".txt")]
 
         scroll = ScrollableFrame(self.main_frame, max_items=50)
         scroll.pack(fill='both', expand=True, padx=5, pady=2)
+        
         if not archivos:
             ttk.Label(scroll.scrollable_frame, text="No hay payloads.", style='Dark.TLabel').pack()
         else:
@@ -1828,12 +1840,15 @@ if __name__ == "__main__":
 
     def _ejecutar_ducky(self, ruta):
         ducky = self._import_ducky_logic()
-        self.escribir_consola(f"\n[+] Exec: {os.path.basename(ruta)}")
+        layout_seleccionado = self.ducky_layout.get() # Obtener si es 'us' o 'es'
+        
+        self.escribir_consola(f"\n[+] Exec: {os.path.basename(ruta)} ({layout_seleccionado.upper()})")
 
         def run():
             time.sleep(2)
             try:
-                ducky.ejecutar_script_ducky(ruta)
+                # Pasar el layout seleccionado a la lógica del Ducky
+                ducky.ejecutar_script_ducky(ruta, layout=layout_seleccionado) 
                 self.escribir_consola("[+] Hecho.")
             except Exception as e:
                 self.escribir_consola(f"[!] Error: {e}")
