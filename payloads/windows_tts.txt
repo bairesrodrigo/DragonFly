@@ -1,7 +1,15 @@
-REM Payload: windows_tts.txt
-REM Usa PowerShell para sintetizar voz en segundo plano
+REM Sube el volumen al 100% y abre YouTube
 DELAY 1000
 GUI r
 DELAY 500
-STRING powershell -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Speak('Atencion. El sistema Dragon Fly ha tomado el control de este dispositivo. Queda usted advertido.');"
+STRING powershell -NoProfile -WindowStyle Hidden -Command "(new-object -com wscript.shell).SendKeys([char]175 * 50)"
 ENTER
+DELAY 1500
+GUI r
+DELAY 500
+STRING https://www.youtube.com/watch?v=dQw4w9WgXcQ
+ENTER
+REM 7 segundos para asegurar que el anuncio salte o el video cargue antes de la pantalla completa
+DELAY 7000
+REM Toca la tecla F directamente (YouTube atajo para Fullscreen)
+f
