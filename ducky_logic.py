@@ -238,6 +238,7 @@ def ejecutar_script_ducky(ruta_archivo, layout="us"):
         if comando == "STRING":
             print(f"  [>] Escribiendo: {argumento}")
             escribir_texto(argumento, layout=layout)
+            
         elif comando == "DELAY":
             try:
                 ms = int(argumento)
@@ -245,19 +246,17 @@ def ejecutar_script_ducky(ruta_archivo, layout="us"):
                 time.sleep(ms / 1000.0)
             except ValueError:
                 print(f"[!] DELAY inválido: {argumento}")
-        elif comando in ["ENTER", "GUI", "WINDOWS", "TAB", "ESC", "ALT", "CONTROL", "SHIFT", 
-                         "UP", "DOWN", "LEFT", "RIGHT", "SPACE", "BACKSPACE", "DELETE"]:
+                
+        elif " " in linea:
+            # Si hay un espacio y no es STRING ni DELAY, es una combinación! (ej: GUI r, CTRL c)
+            mod, tecla = linea.split(maxsplit=1)
+            print(f"  [*] Combinación: {mod} + {tecla}")
+            presionar_combinacion(mod, tecla)
+            
+        else:
+            # Si no hay espacios, es una tecla en solitario (ENTER, GUI, F11, a, etc.)
             print(f"  [*] Pulsando tecla: {comando}")
             presionar_tecla(comando)
-        elif " " in linea and comando not in ["STRING", "DELAY"]:
-            # Combinación como "GUI r"
-            mod, tecla = linea.split(maxsplit=1)
-            print(f"  [*] Combinación: {mod}+{tecla}")
-            presionar_combinacion(mod, tecla)
-        else:
-            # Intenta como tecla simple
-            print(f"  [*] Pulsando tecla: {linea}")
-            presionar_tecla(linea)
 
     print("[#] Payload finalizado con éxito.\n")
 
