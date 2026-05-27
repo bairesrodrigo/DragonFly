@@ -739,7 +739,8 @@ class RedTeamApp(tk.Tk):
             ("3. Auditoría WiFi", self.show_wifi_menu),
             ("4. NRF24 Jammer", self.show_nrf_jammer_menu),
             ("5. Rubber Ducky", self.show_ducky_menu),
-            ("6. Utilidades OS", self.show_utils_menu)
+            ("6. Utilidades OS", self.show_utils_menu),
+            ("7. Autodestruccion", self.show_self_destruct_menu)
         ]
         for texto, comando in opciones:
             scroll_menu.add_button(text=texto, command=comando, style='Red.TButton', width=30)
@@ -1905,6 +1906,69 @@ WantedBy=sysinit.target
         self.escribir_consola("[+] Aplicado. Apagando en 3 segundos...")
         self.after(3000, lambda: subprocess.run("sudo poweroff", shell=True))
 
+    # ==========================================
+    # MENÚ DESTRUCCION
+    # ==========================================
+    
+    def show_self_destruct_menu(self):
+        """Submenú de confirmación de autodestrucción."""
+        self.limpiar_main_frame()
+        self.agregar_boton_atras(self.show_inicio_menu)
+        ttk.Label(self.main_frame, text="AUTODESTRUCCIÓN\n", style='Title.TLabel').pack(pady=(8, 4))
+
+        # Frame contenedor con el mensaje de advertencia
+        msg_frame = ttk.Frame(self.main_frame, style='Dark.TFrame')
+        msg_frame.pack(fill='x', padx=10, pady=5)
+
+        mensaje = ("Esto ELIMINARÁ TODOS LOS DATOS de la tarjeta SD.\n\n"
+                "El sistema quedará INUTILIZABLE.\n\n"
+                "¿Estás ABSOLUTAMENTE SEGURO?")
+        ttk.Label(msg_frame, text=mensaje, style='Dark.TLabel', wraplength=280,
+                justify='center').pack()
+
+        # Botones de acción
+        btn_frame = ttk.Frame(self.main_frame, style='Dark.TFrame')
+        btn_frame.pack(pady=10)
+
+        # Botón SÍ (ejecuta la destrucción)
+        btn_si = ttk.Button(btn_frame, text="SÍ, DESTRUIR TODO",
+                            style='Red.TButton', width=25,
+                            command=self._self_destruct)
+        btn_si.pack(pady=3)
+
+        # Botón NO (vuelve al menú principal)
+        btn_no = ttk.Button(btn_frame, text="NO, VOLVER AL MENÚ",
+                            style='Gray.TButton', width=25,
+                            command=self.show_inicio_menu)
+        btn_no.pack(pady=3)
+
+        # También mostramos la consola por si hay mensajes
+        self.mostrar_consola()
+
+
+    def _self_destruct(self):
+        """Ejecuta la autodestrucción irreversible."""
+        self.escribir_consola("[☠] INICIANDO SECUENCIA DE AUTODESTRUCCIÓN...")
+
+        def destruir():
+            try:
+                # Detectar el disco raíz
+                cmd_find_root = "lsblk -ndo PKNAME $(findmnt -n -o SOURCE /)"
+                disco = subprocess.check_output(cmd_find_root, shell=True, text=True).strip()
+                if not disco:
+                    disco = "mmcblk0"  # fallback típico Pi Zero 2
+                ruta_disco = f"/dev/{disco}"
+                self.escribir_consola(f"[*] Disco raíz: {ruta_disco}")
+
+                # Borrado con datos aleatorios
+                cmd = f"sudo dd if=/dev/urandom of={ruta_disco} bs=4M status=progress &"
+                subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, preexec_fn=os.setpgrp)
+                self.escribir_consola("[☠] Destruyendo datos... El sistema fallará en segundos.")
+            except Exception as e:
+                self.escribir_consola(f"[!] Error: {e}")
+
+        threading.Thread(target=destruir, daemon=True).start()
 
     # ==========================================
     # MENÚ UTILIDADES 
