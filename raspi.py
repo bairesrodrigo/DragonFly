@@ -1914,36 +1914,35 @@ WantedBy=sysinit.target
         """Submenú de confirmación de autodestrucción."""
         self.limpiar_main_frame()
         self.agregar_boton_atras(self.show_inicio_menu)
-        ttk.Label(self.main_frame, text="AUTODESTRUCCIÓN\n", style='Title.TLabel').pack(pady=(8, 4))
+        ttk.Label(self.main_frame, text="AUTODESTRUCCIÓN", style='Title.TLabel').pack(pady=2)
 
-        # Frame contenedor con el mensaje de advertencia
-        msg_frame = ttk.Frame(self.main_frame, style='Dark.TFrame')
-        msg_frame.pack(fill='x', padx=10, pady=5)
+        # 1. Envolvemos todo en el ScrollableFrame (igual que los otros menús)
+        scroll_destruct = ScrollableFrame(self.main_frame, max_items=10)
+        scroll_destruct.pack(fill='both', expand=True, padx=2, pady=2)
 
-        mensaje = ("Esto ELIMINARÁ TODOS LOS DATOS de la tarjeta SD.\n\n"
-                "El sistema quedará INUTILIZABLE.\n\n"
-                "¿Estás ABSOLUTAMENTE SEGURO?")
-        ttk.Label(msg_frame, text=mensaje, style='Dark.TLabel', wraplength=280,
-                justify='center').pack()
+        # 2. Mensaje de advertencia bien centrado
+        mensaje = ("Esto ELIMINARÁ TODOS LOS DATOS\nde la tarjeta SD.\n\n"
+                   "El sistema quedará INUTILIZABLE.\n\n"
+                   "¿Estás ABSOLUTAMENTE SEGURO?")
+        
+        lbl_advertencia = ttk.Label(scroll_destruct.scrollable_frame, text=mensaje, 
+                                    style='Dark.TLabel', wraplength=280, justify='center')
+        
+        # Inyectamos el texto al scrollable_frame con sus respectivos márgenes
+        scroll_destruct.add_widget(lbl_advertencia, pady=(10, 15))
 
-        # Botones de acción
-        btn_frame = ttk.Frame(self.main_frame, style='Dark.TFrame')
-        btn_frame.pack(pady=10)
+        # 3. Botones estandarizados con el método interno add_button (width=28 por defecto)
+        scroll_destruct.add_button(text="SÍ, DESTRUIR TODO", 
+                                   command=self._self_destruct, 
+                                   style='Red.TButton', width=28)
+        
+        scroll_destruct.add_button(text="NO, VOLVER AL MENÚ", 
+                                   command=self.show_inicio_menu, 
+                                   style='Gray.TButton', width=28)
 
-        # Botón SÍ (ejecuta la destrucción)
-        btn_si = ttk.Button(btn_frame, text="SÍ, DESTRUIR TODO",
-                            style='Red.TButton', width=25,
-                            command=self._self_destruct)
-        btn_si.pack(pady=3)
-
-        # Botón NO (vuelve al menú principal)
-        btn_no = ttk.Button(btn_frame, text="NO, VOLVER AL MENÚ",
-                            style='Gray.TButton', width=25,
-                            command=self.show_inicio_menu)
-        btn_no.pack(pady=3)
-
-        # También mostramos la consola por si hay mensajes
-        self.mostrar_consola()
+        # 4. Acoplamos la terminal a la misma vista deslizable para ver el proceso
+        self.mostrar_consola(parent=scroll_destruct.scrollable_frame)
+        gc.collect()
 
 
     def _self_destruct(self):
