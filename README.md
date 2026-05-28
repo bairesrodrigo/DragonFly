@@ -8,15 +8,6 @@
 
 <br/>
 
-[![GitHub repo size](https://img.shields.io/github/repo-size/whoamijas0n/DragonFly?style=for-the-badge&color=1a1a2e&labelColor=0d0d1a)](https://github.com/whoamijas0n/DragonFly)
-[![GitHub language count](https://img.shields.io/github/languages/count/whoamijas0n/DragonFly?style=for-the-badge&color=1a1a2e&labelColor=0d0d1a)](https://github.com/whoamijas0n/DragonFly)
-[![GitHub forks](https://img.shields.io/github/forks/whoamijas0n/DragonFly?style=for-the-badge&color=1a1a2e&labelColor=0d0d1a)](https://github.com/whoamijas0n/DragonFly)
-[![GitHub Issues](https://img.shields.io/github/issues/whoamijas0n/DragonFly?style=for-the-badge&color=1a1a2e&labelColor=0d0d1a)](https://github.com/whoamijas0n/DragonFly/issues/new)
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/whoamijas0n/DragonFly?style=for-the-badge&color=1a1a2e&labelColor=0d0d1a)](https://github.com/whoamijas0n/DragonFly/issues/new)
-
-
-<br/>
-
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-A22846?style=for-the-badge&logo=Raspberry%20Pi&logoColor=white)
 ![Kali Linux](https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kali-linux&logoColor=white)
