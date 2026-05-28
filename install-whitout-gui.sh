@@ -69,11 +69,13 @@ instalar_dependencias() {
     
     # Se añade xserver-xorg, xinit y x11-xserver-utils para el motor gráfico en OS Lite
     # Se elimina lxterminal por ser innecesario
+
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
         python3 python3-tk python3-serial \
         nmap macchanger aircrack-ng hostapd dnsmasq iptables \
         network-manager bluez rfkill \
-        xserver-xorg xinit x11-xserver-utils
+        xserver-xorg xinit x11-xserver-utils \
+        xserver-xorg-input-libinput xserver-xorg-input-evdev
 
     print_center "[+] Dependencias instaladas correctamente." "${GREEN}"
     sleep 2
