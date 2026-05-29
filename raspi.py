@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, simpledialog
+from PIL import Image, ImageTk
 import subprocess
 import threading
 import os
@@ -403,6 +404,8 @@ class RedTeamApp(tk.Tk):
         self.resizable(True, True)
 
         # Estilos ttk completamente oscuros (sin bordes blancos)
+
+        
         style = ttk.Style()
         style.theme_use('clam')
 
@@ -442,6 +445,13 @@ class RedTeamApp(tk.Tk):
                   background=[('active', COLOR_BOTON_ROJO), ('pressed', COLOR_BOTON_HOVER)],
                   arrowcolor=[('active', 'white')])
         
+        # Estilo para botones con iconos (App style)
+        style.configure('AppIcon.TButton', background=COLOR_FONDO_PRINCIPAL, foreground='white',
+                        relief='flat', font=('Helvetica', 9, 'bold'), borderwidth=0)
+        style.map('AppIcon.TButton',
+                  background=[('active', COLOR_BOTON_HOVER)],
+                  bordercolor=[('focus', COLOR_FONDO_PRINCIPAL)])
+
 
 
         style.configure('Red.TButton', background=COLOR_BOTON_ROJO, foreground='white',
@@ -738,25 +748,56 @@ class RedTeamApp(tk.Tk):
     # ---------------- INICIO ----------------
     def show_inicio_menu(self):
         self.limpiar_main_frame()
-        ttk.Label(self.main_frame, text="DRAGON FLY SYSTEM", style='Title.TLabel').pack(pady=(8,2))
-        ttk.Label(self.main_frame, text="Red Team Toolbox", style='Gray.TLabel').pack(pady=(0,6))
+        ttk.Label(self.main_frame, text="DRAGON FLY", style='Title.TLabel').pack(pady=(5,5))
 
-        # Envolvemos el menú principal en un ScrollableFrame
-        scroll_menu = ScrollableFrame(self.main_frame, max_items=10)
-        scroll_menu.pack(fill='both', expand=True, padx=2, pady=2)
+        # Contenedor principal para la cuadrícula
+        grid_frame = ttk.Frame(self.main_frame, style='Dark.TFrame')
+        grid_frame.pack(fill='both', expand=True, padx=5, pady=5)
 
+        # Definir las opciones con sus respectivas rutas de iconos
+        # Nota: Asegúrate de tener estas imágenes en la carpeta 'icons'
         opciones = [
-            ("1. Reconocimiento", self.show_recon_menu),
-            ("2. MAC Changer", self.show_mac_menu),
-            ("3. Auditoría WiFi", self.show_wifi_menu),
-            ("4. NRF24 Jammer", self.show_nrf_jammer_menu),
-            ("5. Rubber Ducky", self.show_ducky_menu),
-            ("6. Utilidades OS", self.show_utils_menu),
-            ("7. Autodestruccion", self.show_self_destruct_menu)
+            ("Recon", self.show_recon_menu, "icons/recon.png"),
+            ("MAC", self.show_mac_menu, "icons/mac.png"),
+            ("WiFi", self.show_wifi_menu, "icons/wifi.png"),
+            ("Jammer", self.show_nrf_jammer_menu, "icons/jammer.png"),
+            ("Ducky", self.show_ducky_menu, "icons/ducky.png"),
+            ("Utils", self.show_utils_menu, "icons/utils.png"),
+            ("Destroy", self.show_self_destruct_menu, "icons/destroy.png")
         ]
-        for texto, comando in opciones:
-            scroll_menu.add_button(text=texto, command=comando, style='Red.TButton', width=30)
 
+        # Lista para evitar que el Garbage Collector borre las imágenes de la memoria
+        self.icon_refs = [] 
+        
+        columnas = 3 # 3 apps por fila (ideal para la pantalla de 2.4")
+        tamano_icono = (52, 52) # Tamaño en píxeles del icono
+
+        for index, (texto, comando, icono_ruta) in enumerate(opciones):
+            fila = index // columnas
+            columna = index % columnas
+
+            try:
+                # Cargar y redimensionar la imagen para que encaje bien en la pantalla
+                img = Image.open(icono_ruta).resize(tamano_icono, Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+                self.icon_refs.append(photo)
+            except Exception as e:
+                # Si no encuentra la imagen, crea un icono transparente o vacío
+                self.escribir_consola(f"[!] Faltó icono: {icono_ruta}")
+                img = Image.new('RGBA', tamano_icono, (0, 0, 0, 0))
+                photo = ImageTk.PhotoImage(img)
+                self.icon_refs.append(photo)
+
+            # Configurar el botón con la imagen y el texto debajo (compound='top')
+            btn = ttk.Button(grid_frame, text=texto, image=photo, compound="top",
+                             style='AppIcon.TButton', command=comando)
+            
+            # sticky='nsew' expande el botón para que sea un área táctil más grande
+            btn.grid(row=fila, column=columna, padx=4, pady=4, sticky="nsew")
+
+            # Configurar el peso de las columnas y filas para que se distribuyan uniformemente
+            grid_frame.grid_columnconfigure(columna, weight=1)
+            grid_frame.grid_rowconfigure(fila, weight=1)
     # ==========================================
     # MENÚ RECONOCIMIENTO (NMAP) 
     # ==========================================
