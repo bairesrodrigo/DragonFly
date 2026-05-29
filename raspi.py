@@ -445,7 +445,7 @@ class RedTeamApp(tk.Tk):
                   background=[('active', COLOR_BOTON_ROJO), ('pressed', COLOR_BOTON_HOVER)],
                   arrowcolor=[('active', 'white')])
         
-        # Estilo para botones con iconos (App style)
+        # Estilo para botones con iconos (App Launcher Style)
         style.configure('AppIcon.TButton', background=COLOR_FONDO_PRINCIPAL, foreground='white',
                         relief='flat', font=('Helvetica', 9, 'bold'), borderwidth=0)
         style.map('AppIcon.TButton',
@@ -748,54 +748,94 @@ class RedTeamApp(tk.Tk):
     # ---------------- INICIO ----------------
     def show_inicio_menu(self):
         self.limpiar_main_frame()
-        ttk.Label(self.main_frame, text="DRAGON FLY", style='Title.TLabel').pack(pady=(5,5))
+        
+        # Títulos de cabecera stándar
+        ttk.Label(self.main_frame, text="DRAGON FLY SYSTEM", style='Title.TLabel').pack(pady=(8, 2))
+        ttk.Label(self.main_frame, text="Red Team Toolbox", style='Gray.TLabel').pack(pady=(0, 6))
 
-        # Contenedor principal para la cuadrícula
-        grid_frame = ttk.Frame(self.main_frame, style='Dark.TFrame')
-        grid_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        # Inicializar el diccionario de caché en la instancia global si no existe
+        if not hasattr(self, 'icon_cache'):
+            self.icon_cache = {}
 
-        # Definir las opciones con sus respectivas rutas de iconos
-        # Nota: Asegúrate de tener estas imágenes en la carpeta 'icons'
+        # 1. DETECCIÓN DINÁMICA DE RESOLUCIÓN (Responsivo)
+        # Intentar obtener el ancho actual de la interfaz; si aún no se mapea, recurre al ancho de pantalla global
+        ancho_actual = self.winfo_width()
+        if ancho_actual <= 1:
+            ancho_actual = self.winfo_screenwidth()
+
+        # Ajustar la distribución de la cuadrícula según el espacio en píxeles de la pantalla
+        if ancho_actual <= 320:         # Pantallas pequeñas de 2.4" (Resolución 320x240)
+            columnas = 2
+            tamano_icono = (44, 44)
+            padding_celda = 6
+        elif ancho_actual <= 480:       # Pantallas medianas de 3.5" (Resolución 480x320)
+            columnas = 3
+            tamano_icono = (54, 54)
+            padding_celda = 10
+        else:                           # Monitores o ventanas de escritorio grandes
+            columnas = 4
+            tamano_icono = (72, 72)
+            padding_celda = 16
+
+        # Envolver la vista en el ScrollableFrame para habilitar el desplazamiento si hay desbordamiento vertical
+        scroll_menu = ScrollableFrame(self.main_frame, max_items=15)
+        scroll_menu.pack(fill='both', expand=True, padx=2, pady=2)
+
+        # Marco de cuadrícula principal dentro del scroll frame
+        grid_frame = ttk.Frame(scroll_menu.scrollable_frame, style='Dark.TFrame')
+        grid_frame.pack(fill='both', expand=True, padx=4, pady=4)
+
+        # Mapeo de opciones del sistema con sus respectivas rutas de iconos
         opciones = [
             ("Recon", self.show_recon_menu, "icons/recon.png"),
-            ("MAC", self.show_mac_menu, "icons/mac.png"),
-            ("WiFi", self.show_wifi_menu, "icons/wifi.png"),
-            ("Jammer", self.show_nrf_jammer_menu, "icons/jammer.png"),
-            ("Ducky", self.show_ducky_menu, "icons/ducky.png"),
-            ("Utils", self.show_utils_menu, "icons/utils.png"),
-            ("Destroy", self.show_self_destruct_menu, "icons/destroy.png")
+            ("MAC Changer", self.show_mac_menu, "icons/mac.png"),
+            ("Auditoría WiFi", self.show_wifi_menu, "icons/wifi.png"),
+            ("NRF24 Jammer", self.show_nrf_jammer_menu, "icons/jammer.png"),
+            ("Rubber Ducky", self.show_ducky_menu, "icons/ducky.png"),
+            ("Utilidades OS", self.show_utils_menu, "icons/utils.png"),
+            ("Autodestrucción", self.show_self_destruct_menu, "icons/destroy.png")
         ]
 
-        # Lista para evitar que el Garbage Collector borre las imágenes de la memoria
-        self.icon_refs = [] 
-        
-        columnas = 3 # 3 apps por fila (ideal para la pantalla de 2.4")
-        tamano_icono = (52, 52) # Tamaño en píxeles del icono
+        # Evita que el Garbage Collector destruya las referencias de imagen del renderizado actual
+        self.current_icon_refs = []
 
         for index, (texto, comando, icono_ruta) in enumerate(opciones):
             fila = index // columnas
             columna = index % columnas
 
-            try:
-                # Cargar y redimensionar la imagen para que encaje bien en la pantalla
-                img = Image.open(icono_ruta).resize(tamano_icono, Image.Resampling.LANCZOS)
-                photo = ImageTk.PhotoImage(img)
-                self.icon_refs.append(photo)
-            except Exception as e:
-                # Si no encuentra la imagen, crea un icono transparente o vacío
-                self.escribir_consola(f"[!] Faltó icono: {icono_ruta}")
-                img = Image.new('RGBA', tamano_icono, (0, 0, 0, 0))
-                photo = ImageTk.PhotoImage(img)
-                self.icon_refs.append(photo)
+            # Crear una clave única para la caché basada en la ruta y el tamaño calculado
+            cache_key = (icono_ruta, tamano_icono)
 
-            # Configurar el botón con la imagen y el texto debajo (compound='top')
-            btn = ttk.Button(grid_frame, text=texto, image=photo, compound="top",
+            if cache_key in self.icon_cache:
+                # Carga instantánea desde la memoria RAM
+                photo = self.icon_cache[cache_key]
+            else:
+                try:
+                    from PIL import Image, ImageTk
+                    img = Image.open(icono_ruta).resize(tamano_icono, Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+                    self.icon_cache[cache_key] = photo  # Almacenar en caché para el próximo retorno
+                except Exception:
+                    # Mecanismo de respaldo (Fallback) en caso de ausencia de archivo o fallo de carga
+                    from PIL import Image, ImageTk
+                    img = Image.new('RGBA', tamano_icono, (0, 0, 0, 0))
+                    photo = ImageTk.PhotoImage(img)
+                    self.icon_cache[cache_key] = photo
+
+            self.current_icon_refs.append(photo)
+
+            # Control de espaciado: Un salto de línea '\n' al inicio del texto del botón empuja
+            # limpiamente el título hacia abajo del icono, cumpliendo con la separación vertical exacta
+            texto_con_espacio = f"\n{texto}"
+
+            # Construcción del botón integrado (Icono arriba, Texto abajo)
+            btn = ttk.Button(grid_frame, text=texto_con_espacio, image=photo, compound="top",
                              style='AppIcon.TButton', command=comando)
             
-            # sticky='nsew' expande el botón para que sea un área táctil más grande
-            btn.grid(row=fila, column=columna, padx=4, pady=4, sticky="nsew")
+            # El parámetro sticky="nsew" asegura que el botón se expanda para rellenar toda la celda táctil
+            btn.grid(row=fila, column=columna, padx=padding_celda, pady=padding_celda, sticky="nsew")
 
-            # Configurar el peso de las columnas y filas para que se distribuyan uniformemente
+            # Configuración de pesos para garantizar la elasticidad proporcional de las filas y columnas
             grid_frame.grid_columnconfigure(columna, weight=1)
             grid_frame.grid_rowconfigure(fila, weight=1)
     # ==========================================
