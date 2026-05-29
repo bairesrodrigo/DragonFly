@@ -12,6 +12,10 @@ import glob
 import gc
 import random  # <-- AÑADIDO PARA EL EFECTO DE RUIDO
 
+# Esto asegura que sin importar desde dónde se llame el script (ej. autostart),
+# las rutas relativas (payloads, Resultados_*, etc.) apunten a la carpeta DragonFly.
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 # Pegar tu arte gigante en una variable global
 ARTE_DRAGON = """
                                                                                                                                                                     
