@@ -210,16 +210,17 @@ class TecladoNumerico(tk.Toplevel):
         self.variable_destino = variable_destino
         
         # Configuración de la ventana para que parezca un modal integrado
-        self.geometry("320x240")
         self.title(titulo)
         self.configure(bg=COLOR_FONDO_PRINCIPAL)
         self.attributes('-topmost', True) # Se mantiene arriba del modo Kiosco
         self.overrideredirect(True) # Sin barra de título del OS
         
-        # Centrar respecto a la ventana principal
+        # Adaptar al tamaño y posición exactos de la ventana padre
+        w = parent.winfo_width()
+        h = parent.winfo_height()
         x = parent.winfo_x()
         y = parent.winfo_y()
-        self.geometry(f"+{x}+{y}")
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
         # Frame principal
         main_frame = ttk.Frame(self, style='Dark.TFrame')
@@ -271,16 +272,17 @@ class TecladoCompleto(tk.Toplevel):
         self.variable_destino = variable_destino
         
         # Configuración como modal Kiosco
-        self.geometry("320x240")
         self.title(titulo)
         self.configure(bg=COLOR_FONDO_PRINCIPAL)
         self.attributes('-topmost', True)
         self.overrideredirect(True)
         
-        # Centrar sobre la ventana padre
+        # Adaptar al tamaño y posición exactos de la ventana padre
+        w = parent.winfo_width()
+        h = parent.winfo_height()
         x = parent.winfo_x()
         y = parent.winfo_y()
-        self.geometry(f"+{x}+{y}")
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
         # Contenedor Principal
         main_frame = ttk.Frame(self, style='Dark.TFrame')
@@ -391,8 +393,14 @@ class RedTeamApp(tk.Tk):
         super().__init__()
 
         self.title("DRAGON FLY - RED TEAM TOOLBOX")
-        self.geometry("320x240")
-        self.resizable(False, False)
+        
+        # Obtener el ancho y alto real de la pantalla
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        # Ajustar la geometría al tamaño de la pantalla y permitir redimensión
+        self.geometry(f"{screen_width}x{screen_height}")
+        self.resizable(True, True)
 
         # Estilos ttk completamente oscuros (sin bordes blancos)
         style = ttk.Style()
