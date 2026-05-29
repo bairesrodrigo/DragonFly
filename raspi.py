@@ -175,14 +175,14 @@ class ScrollableFrame(tk.Frame):
         self.canvas.configure(scrollregion=(0, 0, 0, 0))
         gc.collect()
 
-    def add_button(self, text, command, style='Gray.TButton', width=None):
+    def add_button(self, text, command, style='Menu.TButton', width=None):
         current_children = len(self.scrollable_frame.winfo_children())
         if current_children >= self.max_items:
             warning_label = tk.Label(self.scrollable_frame,
                                      text="[!] Demasiados resultados. Revisa desde consola.",
                                      bg=self.bg_color, fg=COLOR_TEXTO_TERMINAL,
                                      font=('Helvetica', 9))
-            warning_label.pack(fill='x', padx=5, pady=2)
+            warning_label.pack(fill='x', padx=10, pady=4)
             return None
 
         if width is None:
@@ -190,7 +190,9 @@ class ScrollableFrame(tk.Frame):
 
         btn = ttk.Button(self.scrollable_frame, text=text, style=style, width=width)
         btn.configure(command=command)
-        btn.pack(fill='x', padx=2, pady=2)
+        
+        # Aplicación de padding externo para Flat Design (padx=10, pady=4)
+        btn.pack(fill='x', padx=10, pady=4)
         return btn
 
     def add_widget(self, widget, **pack_options):
@@ -569,27 +571,28 @@ class RedTeamApp(tk.Tk):
         if parent is None:
             parent = self.main_frame
             
-        # Contenedor para alinear la terminal y su barra de scroll
-        self.console_frame = tk.Frame(parent, bg='#0a0a0a')
-        self.console_frame.pack(fill='x', padx=2, pady=2)
+        # Contenedor aislado con fondo casi negro (#050505) y borde visible (#333333)
+        self.console_frame = tk.Frame(parent, bg='#050505', 
+                                      highlightbackground="#333333", highlightcolor="#333333", 
+                                      highlightthickness=1)
+        self.console_frame.pack(fill='x', padx=5, pady=6)
 
-        self.console_textbox = tk.Text(self.console_frame, height=4, bg='#0a0a0a',
-                                       fg=COLOR_TEXTO_TERMINAL, font=('Courier', 9),
+        # Terminal text-box con fuente en negrita (bold)
+        self.console_textbox = tk.Text(self.console_frame, height=4, bg='#050505',
+                                       fg=COLOR_TEXTO_TERMINAL, font=('Courier', 9, 'bold'),
                                        state='disabled', highlightthickness=0,
                                        borderwidth=0, relief='flat')
                                        
-        # Scrollbar vertical enlazada a la terminal
         self.console_scrollbar = ttk.Scrollbar(self.console_frame, orient="vertical", 
                                                command=self.console_textbox.yview,
                                                style='Dark.Vertical.TScrollbar')
                                                
         self.console_textbox.configure(yscrollcommand=self.console_scrollbar.set)
         
-        # Empaquetado: barra a la derecha, texto llenando el resto
         self.console_scrollbar.pack(side="right", fill="y")
-        self.console_textbox.pack(side="left", fill="x", expand=True)
+        # Padding interno ligero en la caja de texto para que las letras no toquen el borde
+        self.console_textbox.pack(side="left", fill="x", expand=True, padx=(4, 0), pady=2)
 
-        # Eventos táctiles para arrastrar el texto con el dedo
         self.console_textbox.bind("<Button-1>", self._on_console_touch_start)
         self.console_textbox.bind("<B1-Motion>", self._on_console_touch_drag)
 
