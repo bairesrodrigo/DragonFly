@@ -156,6 +156,7 @@ xset s noblank
 openbox &
 
 # Iniciar DragonFly directamente
+cd $PROJECT_DIR
 exec sudo /usr/bin/python3 $PROJECT_DIR/raspi.py
 EOF
     
