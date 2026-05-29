@@ -68,14 +68,16 @@ instalar_dependencias() {
     apt-get update -y
     
     # Se añade xserver-xorg, xinit y x11-xserver-utils para el motor gráfico en OS Lite
-    # Se elimina lxterminal por ser innecesario
+    # Se eliminó lxterminal por ser innecesario
+    # Se incluyen openbox, fuentes de x11 y fbdev para la pantalla TFT
 
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
         python3 python3-tk python3-serial \
         nmap macchanger aircrack-ng hostapd dnsmasq iptables \
         network-manager bluez rfkill \
         xserver-xorg xinit x11-xserver-utils \
-        xserver-xorg-input-libinput xserver-xorg-input-evdev
+        xserver-xorg-input-libinput xserver-xorg-input-evdev \
+        openbox xfonts-base xfonts-75dpi xserver-xorg-video-fbdev
 
     print_center "[+] Dependencias instaladas correctamente." "${GREEN}"
     sleep 2
@@ -140,7 +142,7 @@ EOF
 
 # 3. Configurar Auto-Inicio Kiosco y Permisos (Sudoers)
 configurar_sistema() {
-    print_center "[*] Configurando Modo Kiosco (Barebones X11)..." "${RED}"
+    print_center "[*] Configurando Modo Kiosco (Openbox + X11)..." "${RED}"
     
     # 3.1. Archivo de arranque X11 (.xinitrc)
     cat << EOF > "$TARGET_HOME/.xinitrc"
@@ -150,6 +152,9 @@ xset -dpms
 xset s off
 xset s noblank
 
+# Iniciar el gestor de ventanas ligero en segundo plano
+openbox &
+
 # Iniciar DragonFly directamente
 exec sudo /usr/bin/python3 $PROJECT_DIR/raspi.py
 EOF
@@ -157,7 +162,18 @@ EOF
     chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.xinitrc"
     chmod +x "$TARGET_HOME/.xinitrc"
 
-    # 3.2. Configurar autologin en consola usando raspi-config
+    # 3.2. Crear archivo de configuración para TFT Screen fbdev
+    print_center "[*] Configurando framebuffer para pantalla TFT..." "${RED}"
+    mkdir -p /usr/share/X11/xorg.conf.d/
+    cat << 'EOF' > /usr/share/X11/xorg.conf.d/99-fbdev.conf
+Section "Device"
+    Identifier "TFT Screen"
+    Driver "fbdev"
+    Option "fbdev" "/dev/fb1"
+EndSection
+EOF
+
+    # 3.3. Configurar autologin en consola usando raspi-config
     print_center "[*] Activando autologin en tty1..." "${RED}"
     if command -v raspi-config >/dev/null 2>&1; then
         raspi-config nonint do_boot_behaviour B2
@@ -165,7 +181,7 @@ EOF
         echo -e "${DARK_GRAY}[!] raspi-config no encontrado. Omitiendo autologin.${NC}"
     fi
 
-    # 3.3. Disparar startx al inicio de sesión desde .profile
+    # 3.4. Disparar startx al inicio de sesión desde .profile
     PROFILE_FILE="$TARGET_HOME/.profile"
     if ! grep -q "startx" "$PROFILE_FILE" 2>/dev/null; then
         cat << 'EOF' >> "$PROFILE_FILE"
@@ -177,12 +193,12 @@ fi
 EOF
     fi
 
-    # 3.4. Otorgar permisos de ejecución
+    # 3.5. Otorgar permisos de ejecución
     print_center "[*] Otorgando permisos de ejecución NOPASSWD en sudoers..." "${RED}"
     echo "$TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/python3 $PROJECT_DIR/raspi.py" | sudo tee /etc/sudoers.d/010_dragonfly > /dev/null
     chmod 0440 /etc/sudoers.d/010_dragonfly
 
-    print_center "[+] Entorno de Kiosco configurado correctamente." "${GREEN}"
+    print_center "[+] Entorno de Kiosco y TFT configurado correctamente." "${GREEN}"
     sleep 2
 }
 
