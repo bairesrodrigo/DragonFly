@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, simpledialog
+from PIL import Image, ImageTk
 import subprocess
 import threading
 import os
@@ -174,14 +175,14 @@ class ScrollableFrame(tk.Frame):
         self.canvas.configure(scrollregion=(0, 0, 0, 0))
         gc.collect()
 
-    def add_button(self, text, command, style='Gray.TButton', width=None):
+    def add_button(self, text, command, style='Menu.TButton', width=None):
         current_children = len(self.scrollable_frame.winfo_children())
         if current_children >= self.max_items:
             warning_label = tk.Label(self.scrollable_frame,
                                      text="[!] Demasiados resultados. Revisa desde consola.",
                                      bg=self.bg_color, fg=COLOR_TEXTO_TERMINAL,
                                      font=('Helvetica', 9))
-            warning_label.pack(fill='x', padx=5, pady=2)
+            warning_label.pack(fill='x', padx=10, pady=4)
             return None
 
         if width is None:
@@ -189,7 +190,9 @@ class ScrollableFrame(tk.Frame):
 
         btn = ttk.Button(self.scrollable_frame, text=text, style=style, width=width)
         btn.configure(command=command)
-        btn.pack(fill='x', padx=2, pady=2)
+        
+        # Aplicación de padding externo para Flat Design (padx=10, pady=4)
+        btn.pack(fill='x', padx=10, pady=4)
         return btn
 
     def add_widget(self, widget, **pack_options):
@@ -403,6 +406,8 @@ class RedTeamApp(tk.Tk):
         self.resizable(True, True)
 
         # Estilos ttk completamente oscuros (sin bordes blancos)
+
+        
         style = ttk.Style()
         style.theme_use('clam')
 
@@ -442,6 +447,13 @@ class RedTeamApp(tk.Tk):
                   background=[('active', COLOR_BOTON_ROJO), ('pressed', COLOR_BOTON_HOVER)],
                   arrowcolor=[('active', 'white')])
         
+        # Estilo para botones con iconos (App Launcher Style)
+        style.configure('AppIcon.TButton', background=COLOR_FONDO_PRINCIPAL, foreground='white',
+                        relief='flat', font=('Helvetica', 9, 'bold'), borderwidth=0)
+        style.map('AppIcon.TButton',
+                  background=[('active', COLOR_BOTON_HOVER)],
+                  bordercolor=[('focus', COLOR_FONDO_PRINCIPAL)])
+
 
 
         style.configure('Red.TButton', background=COLOR_BOTON_ROJO, foreground='white',
@@ -559,27 +571,28 @@ class RedTeamApp(tk.Tk):
         if parent is None:
             parent = self.main_frame
             
-        # Contenedor para alinear la terminal y su barra de scroll
-        self.console_frame = tk.Frame(parent, bg='#0a0a0a')
-        self.console_frame.pack(fill='x', padx=2, pady=2)
+        # Contenedor aislado con fondo casi negro (#050505) y borde visible (#333333)
+        self.console_frame = tk.Frame(parent, bg='#050505', 
+                                      highlightbackground="#333333", highlightcolor="#333333", 
+                                      highlightthickness=1)
+        self.console_frame.pack(fill='x', padx=5, pady=6)
 
-        self.console_textbox = tk.Text(self.console_frame, height=4, bg='#0a0a0a',
-                                       fg=COLOR_TEXTO_TERMINAL, font=('Courier', 9),
+        # Terminal text-box con fuente en negrita (bold)
+        self.console_textbox = tk.Text(self.console_frame, height=4, bg='#050505',
+                                       fg=COLOR_TEXTO_TERMINAL, font=('Courier', 9, 'bold'),
                                        state='disabled', highlightthickness=0,
                                        borderwidth=0, relief='flat')
                                        
-        # Scrollbar vertical enlazada a la terminal
         self.console_scrollbar = ttk.Scrollbar(self.console_frame, orient="vertical", 
                                                command=self.console_textbox.yview,
                                                style='Dark.Vertical.TScrollbar')
                                                
         self.console_textbox.configure(yscrollcommand=self.console_scrollbar.set)
         
-        # Empaquetado: barra a la derecha, texto llenando el resto
         self.console_scrollbar.pack(side="right", fill="y")
-        self.console_textbox.pack(side="left", fill="x", expand=True)
+        # Padding interno ligero en la caja de texto para que las letras no toquen el borde
+        self.console_textbox.pack(side="left", fill="x", expand=True, padx=(4, 0), pady=2)
 
-        # Eventos táctiles para arrastrar el texto con el dedo
         self.console_textbox.bind("<Button-1>", self._on_console_touch_start)
         self.console_textbox.bind("<B1-Motion>", self._on_console_touch_drag)
 
@@ -738,25 +751,96 @@ class RedTeamApp(tk.Tk):
     # ---------------- INICIO ----------------
     def show_inicio_menu(self):
         self.limpiar_main_frame()
-        ttk.Label(self.main_frame, text="DRAGON FLY SYSTEM", style='Title.TLabel').pack(pady=(8,2))
-        ttk.Label(self.main_frame, text="Red Team Toolbox", style='Gray.TLabel').pack(pady=(0,6))
+        
+        # Títulos de cabecera stándar
+        ttk.Label(self.main_frame, text="DRAGON FLY SYSTEM", style='Title.TLabel').pack(pady=(8, 2))
+        ttk.Label(self.main_frame, text="Red Team Toolbox", style='Gray.TLabel').pack(pady=(0, 6))
 
-        # Envolvemos el menú principal en un ScrollableFrame
-        scroll_menu = ScrollableFrame(self.main_frame, max_items=10)
+        # Inicializar el diccionario de caché en la instancia global si no existe
+        if not hasattr(self, 'icon_cache'):
+            self.icon_cache = {}
+
+        # 1. DETECCIÓN DINÁMICA DE RESOLUCIÓN (Responsivo)
+        # Intentar obtener el ancho actual de la interfaz; si aún no se mapea, recurre al ancho de pantalla global
+        ancho_actual = self.winfo_width()
+        if ancho_actual <= 1:
+            ancho_actual = self.winfo_screenwidth()
+
+        # Ajustar la distribución de la cuadrícula según el espacio en píxeles de la pantalla
+        if ancho_actual <= 320:         # Pantallas pequeñas de 2.4" (Resolución 320x240)
+            columnas = 2
+            tamano_icono = (44, 44)
+            padding_celda = 6
+        elif ancho_actual <= 480:       # Pantallas medianas de 3.5" (Resolución 480x320)
+            columnas = 3
+            tamano_icono = (54, 54)
+            padding_celda = 10
+        else:                           # Monitores o ventanas de escritorio grandes
+            columnas = 4
+            tamano_icono = (72, 72)
+            padding_celda = 16
+
+        # Envolver la vista en el ScrollableFrame para habilitar el desplazamiento si hay desbordamiento vertical
+        scroll_menu = ScrollableFrame(self.main_frame, max_items=15)
         scroll_menu.pack(fill='both', expand=True, padx=2, pady=2)
 
-        opciones = [
-            ("1. Reconocimiento", self.show_recon_menu),
-            ("2. MAC Changer", self.show_mac_menu),
-            ("3. Auditoría WiFi", self.show_wifi_menu),
-            ("4. NRF24 Jammer", self.show_nrf_jammer_menu),
-            ("5. Rubber Ducky", self.show_ducky_menu),
-            ("6. Utilidades OS", self.show_utils_menu),
-            ("7. Autodestruccion", self.show_self_destruct_menu)
-        ]
-        for texto, comando in opciones:
-            scroll_menu.add_button(text=texto, command=comando, style='Red.TButton', width=30)
+        # Marco de cuadrícula principal dentro del scroll frame
+        grid_frame = ttk.Frame(scroll_menu.scrollable_frame, style='Dark.TFrame')
+        grid_frame.pack(fill='both', expand=True, padx=4, pady=4)
 
+        # Mapeo de opciones del sistema con sus respectivas rutas de iconos
+        opciones = [
+            ("Recon", self.show_recon_menu, "icons/recon.png"),
+            ("MAC Changer", self.show_mac_menu, "icons/mac.png"),
+            ("Auditoría WiFi", self.show_wifi_menu, "icons/wifi.png"),
+            ("NRF24 Jammer", self.show_nrf_jammer_menu, "icons/jammer.png"),
+            ("Rubber Ducky", self.show_ducky_menu, "icons/ducky.png"),
+            ("Utilidades OS", self.show_utils_menu, "icons/utils.png"),
+            ("Autodestrucción", self.show_self_destruct_menu, "icons/destroy.png")
+        ]
+
+        # Evita que el Garbage Collector destruya las referencias de imagen del renderizado actual
+        self.current_icon_refs = []
+
+        for index, (texto, comando, icono_ruta) in enumerate(opciones):
+            fila = index // columnas
+            columna = index % columnas
+
+            # Crear una clave única para la caché basada en la ruta y el tamaño calculado
+            cache_key = (icono_ruta, tamano_icono)
+
+            if cache_key in self.icon_cache:
+                # Carga instantánea desde la memoria RAM
+                photo = self.icon_cache[cache_key]
+            else:
+                try:
+                    from PIL import Image, ImageTk
+                    img = Image.open(icono_ruta).resize(tamano_icono, Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+                    self.icon_cache[cache_key] = photo  # Almacenar en caché para el próximo retorno
+                except Exception:
+                    # Mecanismo de respaldo (Fallback) en caso de ausencia de archivo o fallo de carga
+                    from PIL import Image, ImageTk
+                    img = Image.new('RGBA', tamano_icono, (0, 0, 0, 0))
+                    photo = ImageTk.PhotoImage(img)
+                    self.icon_cache[cache_key] = photo
+
+            self.current_icon_refs.append(photo)
+
+            # Control de espaciado: Un salto de línea '\n' al inicio del texto del botón empuja
+            # limpiamente el título hacia abajo del icono, cumpliendo con la separación vertical exacta
+            texto_con_espacio = f"\n{texto}"
+
+            # Construcción del botón integrado (Icono arriba, Texto abajo)
+            btn = ttk.Button(grid_frame, text=texto_con_espacio, image=photo, compound="top",
+                             style='AppIcon.TButton', command=comando)
+            
+            # El parámetro sticky="nsew" asegura que el botón se expanda para rellenar toda la celda táctil
+            btn.grid(row=fila, column=columna, padx=padding_celda, pady=padding_celda, sticky="nsew")
+
+            # Configuración de pesos para garantizar la elasticidad proporcional de las filas y columnas
+            grid_frame.grid_columnconfigure(columna, weight=1)
+            grid_frame.grid_rowconfigure(fila, weight=1)
     # ==========================================
     # MENÚ RECONOCIMIENTO (NMAP) 
     # ==========================================
